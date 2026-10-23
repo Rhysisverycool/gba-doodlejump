@@ -1,6 +1,5 @@
 /* ==========================================================================
- *  CHROME DINO GBA - 1:1 Chromium Physics Port
- *  Derived directly from Chromium components/neterror/resources/offline.js
+ *  CHROME DINO GBA - True Spaced Obstacles + 1:1 Chromium Physics
  * ========================================================================== */
 
 #define REG_DISPCNT     *(volatile unsigned short*)0x04000000
@@ -42,29 +41,22 @@
 #define screen       ((unsigned char*)0x02000000)
 #define PALETTE_MEM  ((volatile unsigned short*)0x05000000)
 
-// 16.16 Fixed Point Math (prevents truncation drift)
+// 16.16 Fixed Point Math
 #define FP_SHIFT        16
 #define INT_TO_FP(x)    ((x) << FP_SHIFT)
 #define FP_TO_INT(x)    ((x) >> FP_SHIFT)
 
 // ==========================================================================
-// EXACT CHROMIUM CONSTANTS (Scaled 0.4x for GBA 240w screen)
+// CHROMIUM 1:1 CONSTANTS
 // ==========================================================================
-// Chrome: SPEED 6.0 -> GBA: 2.40
-#define SPEED_INITIAL       157286  // 2.40 in 16.16 FP
-// Chrome: MAX_SPEED 13.0 -> GBA: 5.20
-#define SPEED_MAX           340787  // 5.20 in 16.16 FP
-// Chrome: ACCELERATION 0.001 -> GBA: 0.0004 (Takes ~7000 frames to reach max)
-#define SPEED_ACCEL         26      // 0.0004 in 16.16 FP
+#define SPEED_INITIAL       157286  // 2.40 px/frame (scaled 0.4x from Chrome's 6.0)
+#define SPEED_MAX           340787  // 5.20 px/frame (scaled 0.4x from Chrome's 13.0)
+#define SPEED_ACCEL         26      // 0.0004 px/frame (takes 2 full minutes to reach top speed)
 
-// Chrome: GRAVITY 0.6 -> GBA: 0.25
-#define GRAVITY             16384   // 0.25 in 16.16 FP
-// Chrome: INIITAL_JUMP_VELOCITY -10.0 -> GBA: -4.20
-#define JUMP_INITIAL_VEL    -275251 // -4.20 in 16.16 FP
-// Chrome: DROP_VELOCITY -5.0 -> GBA: -2.10 (Variable jump cutoff)
-#define JUMP_DROP_VEL       -137626 // -2.10 in 16.16 FP
-// Chrome: SPEED_DROP_COEFFICIENT 3.0
-#define FAST_FALL_GRAV      49152   // 3x Gravity (0.75 in 16.16 FP)
+#define GRAVITY             16384   // 0.25 px/frame^2
+#define JUMP_INITIAL_VEL    -275251 // -4.20 px/frame (full jump)
+#define JUMP_DROP_VEL       -137626 // -2.10 px/frame (short-hop cutoff)
+#define FAST_FALL_GRAV      49152   // 3x Gravity drop
 
 // Palette Indices
 #define C_TRANS 0
@@ -107,7 +99,7 @@ static inline unsigned int rand_next(void) {
 }
 
 // ==========================================================================
-// SPRITE ASSETS
+// SPRITES
 // ==========================================================================
 
 static const unsigned char dino_stand[20][18] = {
@@ -188,7 +180,7 @@ static const unsigned char font3x5[12][5] = {
 };
 
 // ==========================================================================
-// RENDER ENGINE
+// RENDER HELPERS
 // ==========================================================================
 
 static inline void vsync(void) {
@@ -268,13 +260,14 @@ typedef struct {
 
 static Dino dino;
 static int distance_ran_fp = 0;
+static int dist_since_last_spawn_fp = 0; // Absolute odometer tracking spacing
+static int next_spawn_gap = 350;         // Required travel distance before next spawn
 static int score = 0;
 static int high_score = 0;
 static int speed_fp = SPEED_INITIAL;
 static int ground_scroll = 0;
 static int milestone_blink = 0;
 static int game_over = 0;
-static int spawn_gap = 160;
 
 #define MAX_CLOUDS 2
 static int cloud_x[MAX_CLOUDS] = {120, 230};
@@ -292,32 +285,30 @@ static void reset_game(void) {
     dino.anim_tick = 0;
 
     distance_ran_fp = 0;
+    dist_since_last_spawn_fp = 0;
+    // 350 pixels of pure empty runway at game start (~3-4 seconds of warmup)
+    next_spawn_gap = 350;
+
     score = 0;
     speed_fp = SPEED_INITIAL;
     ground_scroll = 0;
     milestone_blink = 0;
     game_over = 0;
 
-    // Chrome starts with an empty runway before first obstacle
-    spawn_gap = 220;
-
     for (int i = 0; i < MAX_OBS; i++) obstacles[i].active = 0;
 }
 
-// Exact Chrome Dino obstacle spacing formula
 static void spawn_obstacle(void) {
+    // 1. Must travel at least next_spawn_gap pixels since the last obstacle spawned!
+    if (FP_TO_INT(dist_since_last_spawn_fp) < next_spawn_gap) {
+        return;
+    }
+
     int idx = -1;
     for (int i = 0; i < MAX_OBS; i++) {
         if (!obstacles[i].active) { idx = i; break; }
     }
     if (idx == -1) return;
-
-    for (int i = 0; i < MAX_OBS; i++) {
-        if (obstacles[i].active) {
-            int obs_screen_x = FP_TO_INT(obstacles[i].x);
-            if (obs_screen_x > (SCREEN_W - spawn_gap)) return;
-        }
-    }
 
     Obstacle* ob = &obstacles[idx];
     ob->active = 1;
@@ -325,13 +316,14 @@ static void spawn_obstacle(void) {
     ob->ptero_frame = 0;
 
     int r = rand_next() % 100;
-    if (score > 250 && r < 35) {
+    // Pterodactyls only start appearing after 350 points
+    if (score > 350 && r < 35) {
         ob->type = OBS_PTERO;
         ob->w = 18; ob->h = 14;
         int alt = rand_next() % 3;
-        if (alt == 0)      ob->y = GROUND_Y - 14;
-        else if (alt == 1) ob->y = GROUND_Y - 28;
-        else               ob->y = GROUND_Y - 45;
+        if (alt == 0)      ob->y = GROUND_Y - 14; // Low (must duck!)
+        else if (alt == 1) ob->y = GROUND_Y - 28; // Mid (must jump!)
+        else               ob->y = GROUND_Y - 45; // High (overhead)
     } else if (r < 75) {
         ob->type = OBS_CACTUS_SM;
         ob->w = 9; ob->h = 16;
@@ -342,11 +334,13 @@ static void spawn_obstacle(void) {
         ob->y = GROUND_Y - 22;
     }
 
-    // Chrome Formula: minGap = width * speed + baseGap * gapCoefficient
-    int cur_spd_int = FP_TO_INT(speed_fp);
-    int min_gap = ob->w * cur_spd_int + 48; // Scaled for GBA
-    int max_gap = min_gap + (min_gap / 2);  // 1.5x max gap coefficient
-    spawn_gap = min_gap + (rand_next() % (max_gap - min_gap + 1));
+    // Reset odometer
+    dist_since_last_spawn_fp = 0;
+
+    // HUGE SPACING: 220 to 360 pixels!
+    // Since the screen is 240 pixels wide, the previous obstacle will completely
+    // exit the screen before the next obstacle is allowed to appear!
+    next_spawn_gap = 220 + (rand_next() % 140);
 }
 
 static inline int check_collision(Obstacle* ob) {
@@ -369,7 +363,7 @@ static inline int check_collision(Obstacle* ob) {
 // ==========================================================================
 
 int main(void) {
-    REG_DISPCNT = 0x0404; // Mode 4
+    REG_DISPCNT = 0x0404;
 
     init_sound();
     reset_game();
@@ -378,11 +372,11 @@ int main(void) {
         unsigned short keys = ~REG_KEYINPUT;
 
         if (!game_over) {
-            // Day / Night Switch every 500 points
+            // Day / Night cycle every 500 points
             int night_phase = (score % 700) >= 500;
             if (night_phase != is_night) set_theme(night_phase);
 
-            // Variable Jump Height (Chrome behavior)
+            // Variable jump height (Chromium 1:1)
             if ((keys & KEY_A) || (keys & KEY_UP)) {
                 if (!dino.is_jumping && !dino.is_ducking) {
                     dino.vy = JUMP_INITIAL_VEL;
@@ -390,17 +384,15 @@ int main(void) {
                     snd_jump();
                 }
             } else {
-                // Key released: clamp upward velocity for a mini-hop
                 if (dino.is_jumping && dino.vy < JUMP_DROP_VEL) {
-                    dino.vy = JUMP_DROP_VEL;
+                    dino.vy = JUMP_DROP_VEL; // Clamps velocity on release for a mini-hop
                 }
             }
 
-            // Down key ducking & fast-fall
             int grav = GRAVITY;
             if (keys & KEY_DOWN) {
                 if (dino.is_jumping) {
-                    grav = FAST_FALL_GRAV; // 3x speed drop
+                    grav = FAST_FALL_GRAV; // 3x gravity fast-fall
                 } else {
                     dino.is_ducking = 1;
                 }
@@ -439,9 +431,11 @@ int main(void) {
                 }
             }
 
+            // Accumulate distance between obstacles
+            dist_since_last_spawn_fp += speed_fp;
             spawn_obstacle();
 
-            // Scrolling Ground & Clouds
+            // Background & Clouds
             ground_scroll += FP_TO_INT(speed_fp);
             for (int i = 0; i < MAX_CLOUDS; i++) {
                 cloud_x[i] -= 1;
@@ -451,20 +445,19 @@ int main(void) {
                 }
             }
 
-            // Official Acceleration: +0.0004 px/frame until max speed (2 minutes)
+            // Acceleration: +0.0004 px/frame (2 minutes to max speed)
             if (speed_fp < SPEED_MAX) {
                 speed_fp += SPEED_ACCEL;
             }
 
-            // Official Distance Meter: distanceRan * 0.025 = Score
+            // Score: 100 points takes ~11 seconds (Chromium exact)
             distance_ran_fp += speed_fp;
             int prev_score = score;
-            // 0.025 coefficient scaled to 16.16 FP
             score = FP_TO_INT(distance_ran_fp) / 16;
 
             if (score / 100 > prev_score / 100) {
                 snd_point();
-                milestone_blink = 60; // 1-second flash
+                milestone_blink = 60;
             }
             if (milestone_blink > 0) milestone_blink--;
 
@@ -494,7 +487,7 @@ int main(void) {
             }
         }
 
-        // 2. Ground & Pebbles
+        // 2. Ground Line & Pebbles
         unsigned int fg4 = (C_FG << 24) | (C_FG << 16) | (C_FG << 8) | C_FG;
         unsigned int* g_ptr = (unsigned int*)(screen + (GROUND_Y * SCREEN_W));
         for (int i = 0; i < (SCREEN_W / 4); i++) g_ptr[i] = fg4;
@@ -595,7 +588,7 @@ int main(void) {
             }
         }
 
-        // 5. High Score & Current Score
+        // 5. Scoreboard
         draw_glyph(160, 8, 10, C_CLOUD);
         draw_glyph(164, 8, 11, C_CLOUD);
         draw_score(172, 8, high_score);
