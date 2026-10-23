@@ -1,6 +1,6 @@
 /* ==========================================================================
- *  CHROME DINO GBA (1:1 Offline T-Rex Runner Port)
- *  Mode 4 (240x160 8-bit paletted) - Locked 60 FPS
+ *  CHROME DINO GBA (Ultra-Optimized 60 FPS Engine)
+ *  Mode 4 (240x160 8-bit paletted) - Zero Lag / Zero Tearing
  * ========================================================================== */
 
 #define REG_DISPCNT     *(volatile unsigned short*)0x04000000
@@ -49,6 +49,7 @@
 #define C_CLOUD 3
 
 static int is_night = 0;
+static unsigned int fill_color = 0;
 
 static void set_theme(int night) {
     is_night = night;
@@ -62,32 +63,32 @@ static void set_theme(int night) {
         PALETTE_MEM[C_FG]    = RGB15(8, 8, 8);    // Charcoal #535353
         PALETTE_MEM[C_CLOUD] = RGB15(25, 25, 25);
     }
+    fill_color = (C_BG << 24) | (C_BG << 16) | (C_BG << 8) | C_BG;
 }
 
 // --- Sound Effects ---
 static void init_sound(void) {
-    REG_SOUNDCNT_X = 0x0080; // Master sound on
-    REG_SOUNDCNT_L = 0x7777; // Max volume
-    REG_SOUNDCNT_H = 0x0002; // DMG channels 100%
+    REG_SOUNDCNT_X = 0x0080;
+    REG_SOUNDCNT_L = 0x7777;
+    REG_SOUNDCNT_H = 0x0002;
 }
 
 static inline void snd_jump(void) {
     REG_SOUND1CNT_L = 0x0000;
-    REG_SOUND1CNT_H = 0xA180; // Crisp high chirp
+    REG_SOUND1CNT_H = 0xA180;
     REG_SOUND1CNT_X = 0x8680;
 }
 
 static inline void snd_point(void) {
-    REG_SOUND2CNT_L = 0xF180; // High score chime
+    REG_SOUND2CNT_L = 0xF180;
     REG_SOUND2CNT_H = 0x8740;
 }
 
 static inline void snd_death(void) {
-    REG_SOUND4CNT_L = 0xC200; // Low crunch
+    REG_SOUND4CNT_L = 0xC200;
     REG_SOUND4CNT_H = 0x8052;
 }
 
-// --- Random Number Generator ---
 static unsigned int rng = 0x12345678;
 static inline unsigned int rand_next(void) {
     rng = rng * 1664525u + 1013904223u;
@@ -95,34 +96,32 @@ static inline unsigned int rand_next(void) {
 }
 
 // ==========================================================================
-// BITMAP SPRITES (Pixel-perfect Chrome Dino assets)
+// SPRITE ASSETS
 // ==========================================================================
 
-// Standing / Jumping T-Rex (18w x 20h)
 static const unsigned char dino_stand[20][18] = {
     {0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0},
     {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1},
-    {0,0,0,0,0,0,0,0,1,1,1,1,0,1,1,1,1,1}, // Eye at col 12
+    {0,0,0,0,0,0,0,0,1,1,1,1,0,1,1,1,1,1},
     {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1},
     {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1},
     {0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0},
     {0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0},
     {1,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0},
-    {1,0,0,0,0,1,1,1,1,1,1,1,0,1,0,0,0,0}, // Tiny arm
+    {1,0,0,0,0,1,1,1,1,1,1,1,0,1,0,0,0,0},
     {1,1,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0},
     {1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0},
     {0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0},
     {0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0},
     {0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
     {0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0},
-    {0,0,0,0,1,1,0,0,1,1,0,0,0,0,0,0,0,0}, // Both legs together
+    {0,0,0,0,1,1,0,0,1,1,0,0,0,0,0,0,0,0},
     {0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0},
     {0,0,0,0,1,1,0,0,0,1,1,0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
 };
 
-// Ducking T-Rex (24w x 13h)
 static const unsigned char dino_duck[13][24] = {
     {0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1},
     {0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1},
@@ -139,89 +138,49 @@ static const unsigned char dino_duck[13][24] = {
     {0,0,0,0,0,1,1,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0}
 };
 
-// Small Cactus (9w x 16h)
 static const unsigned char cactus_small[16][9] = {
-    {0,0,0,1,1,1,0,0,0},
-    {0,0,0,1,1,1,0,0,0},
-    {0,1,0,1,1,1,0,0,0},
-    {0,1,0,1,1,1,0,1,0},
-    {0,1,0,1,1,1,0,1,0},
-    {0,1,1,1,1,1,1,1,0},
-    {0,0,1,1,1,1,1,0,0},
-    {0,0,0,1,1,1,0,0,0},
-    {0,0,0,1,1,1,0,0,0},
-    {0,0,0,1,1,1,0,0,0},
-    {0,0,0,1,1,1,0,0,0},
-    {0,0,0,1,1,1,0,0,0},
-    {0,0,0,1,1,1,0,0,0},
-    {0,0,0,1,1,1,0,0,0},
-    {0,0,0,1,1,1,0,0,0},
+    {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0}, {0,1,0,1,1,1,0,0,0},
+    {0,1,0,1,1,1,0,1,0}, {0,1,0,1,1,1,0,1,0}, {0,1,1,1,1,1,1,1,0},
+    {0,0,1,1,1,1,1,0,0}, {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0},
+    {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0},
+    {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0},
     {0,0,0,1,1,1,0,0,0}
 };
 
-// Large Cactus (13w x 22h)
 static const unsigned char cactus_large[22][13] = {
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,1,0,0,1,1,1,0,0,0,0,0},
-    {0,0,1,0,0,1,1,1,0,0,1,0,0},
-    {0,0,1,0,0,1,1,1,0,0,1,0,0},
-    {0,0,1,0,0,1,1,1,0,0,1,0,0},
-    {0,0,1,1,1,1,1,1,1,1,1,0,0},
-    {0,0,0,1,1,1,1,1,1,1,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0}
+    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0},
+    {0,0,1,0,0,1,1,1,0,0,0,0,0}, {0,0,1,0,0,1,1,1,0,0,1,0,0},
+    {0,0,1,0,0,1,1,1,0,0,1,0,0}, {0,0,1,0,0,1,1,1,0,0,1,0,0},
+    {0,0,1,1,1,1,1,1,1,1,1,0,0}, {0,0,0,1,1,1,1,1,1,1,0,0,0},
+    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0}
 };
 
-// Pterodactyl Wing-Up (18w x 14h)
 static const unsigned char ptero_up[14][18] = {
-    {0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0},
-    {1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0},
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0},
-    {0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+    {0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0},
+    {1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0}, {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0}, {0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
 };
 
-// Pterodactyl Wing-Down (18w x 14h)
 static const unsigned char ptero_down[14][18] = {
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0},
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0},
-    {0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0}, {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+    {0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0}, {0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
+    {0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0}, {0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
 };
 
-// Cloud (16w x 6h)
 static const unsigned char cloud_map[6][16] = {
     {0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0},
     {0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0},
@@ -231,24 +190,18 @@ static const unsigned char cloud_map[6][16] = {
     {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
 };
 
-// Font 3x5 + Digits & "HI"
 static const unsigned char font3x5[12][5] = {
-    {0x7, 0x5, 0x5, 0x5, 0x7}, // 0
-    {0x2, 0x6, 0x2, 0x2, 0x7}, // 1
-    {0x7, 0x1, 0x7, 0x4, 0x7}, // 2
-    {0x7, 0x1, 0x7, 0x1, 0x7}, // 3
-    {0x5, 0x5, 0x7, 0x1, 0x1}, // 4
-    {0x7, 0x4, 0x7, 0x1, 0x7}, // 5
-    {0x7, 0x4, 0x7, 0x5, 0x7}, // 6
-    {0x7, 0x1, 0x2, 0x4, 0x4}, // 7
-    {0x7, 0x5, 0x7, 0x5, 0x7}, // 8
-    {0x7, 0x5, 0x7, 0x1, 0x7}, // 9
-    {0x5, 0x5, 0x7, 0x5, 0x5}, // H (10)
-    {0x7, 0x2, 0x2, 0x2, 0x7}  // I (11)
+    {0x7, 0x5, 0x5, 0x5, 0x7}, {0x2, 0x6, 0x2, 0x2, 0x7},
+    {0x7, 0x1, 0x7, 0x4, 0x7}, {0x7, 0x1, 0x7, 0x1, 0x7},
+    {0x5, 0x5, 0x7, 0x1, 0x1}, {0x7, 0x4, 0x7, 0x1, 0x7},
+    {0x7, 0x4, 0x7, 0x5, 0x7}, {0x7, 0x1, 0x2, 0x4, 0x4},
+    {0x7, 0x5, 0x7, 0x5, 0x7}, {0x7, 0x5, 0x7, 0x1, 0x7},
+    {0x5, 0x5, 0x7, 0x5, 0x5}, // H
+    {0x7, 0x2, 0x2, 0x2, 0x7}  // I
 };
 
 // ==========================================================================
-// RENDER HELPERS
+// RENDER ENGINE
 // ==========================================================================
 
 static inline void vsync(void) {
@@ -256,29 +209,31 @@ static inline void vsync(void) {
     while (REG_VCOUNT < 160);
 }
 
+// Ultra-fast DMA clear using fixed-source 32-bit hardware fill
+static inline void clear_screen_dma(void) {
+    REG_DMA3SAD = (unsigned int)&fill_color;
+    REG_DMA3DAD = (unsigned int)screen;
+    REG_DMA3CNT = 0x85000000 | (SCREEN_W * SCREEN_H / 4); // Fixed source, 32-bit
+}
+
+// Hardware flip during VBlank
 static inline void flip_display(void) {
     vsync();
     REG_DMA3SAD = (unsigned int)screen;
     REG_DMA3DAD = 0x06000000;
-    REG_DMA3CNT = 0x84000000 | (SCREEN_W * SCREEN_H / 4); // 9600 words
-}
-
-static void clear_screen(void) {
-    unsigned int c = (C_BG << 24) | (C_BG << 16) | (C_BG << 8) | C_BG;
-    unsigned int* p = (unsigned int*)screen;
-    for (int i = 0; i < (SCREEN_W * SCREEN_H / 4); i++) {
-        p[i] = c;
-    }
+    REG_DMA3CNT = 0x84000000 | (SCREEN_W * SCREEN_H / 4);
 }
 
 static void draw_glyph(int x, int y, int idx, unsigned char color) {
     for (int r = 0; r < 5; r++) {
-        unsigned char row = font3x5[idx][r];
+        int sy = y + r;
+        if (sy >= SCREEN_H) continue;
+        int row = sy * SCREEN_W;
+        unsigned char row_bits = font3x5[idx][r];
         for (int c = 0; c < 3; c++) {
-            if (row & (1 << (2 - c))) {
-                if (x + c < SCREEN_W && y + r < SCREEN_H) {
-                    screen[(y + r) * SCREEN_W + (x + c)] = color;
-                }
+            if (row_bits & (1 << (2 - c))) {
+                int sx = x + c;
+                if (sx < SCREEN_W) screen[row + sx] = color;
             }
         }
     }
@@ -297,7 +252,7 @@ static void draw_score(int x, int y, int score_val) {
 }
 
 // ==========================================================================
-// GAME STATE & CONSTANTS
+// GAME STATE
 // ==========================================================================
 
 #define OBS_CACTUS_SM  0
@@ -317,7 +272,7 @@ typedef struct {
 static Obstacle obstacles[MAX_OBS];
 
 typedef struct {
-    int x; // Screen X
+    int x;
     int y; // 8.8 fixed
     int vy; // 8.8 fixed
     int is_jumping;
@@ -329,12 +284,11 @@ typedef struct {
 static Dino dino;
 static int score = 0;
 static int high_score = 0;
-static int speed = 0; // 8.8 fixed speed
+static int speed = 0;
 static int ground_scroll = 0;
 static int milestone_blink = 0;
 static int game_over = 0;
 
-// Clouds
 #define MAX_CLOUDS 2
 static int cloud_x[MAX_CLOUDS] = {120, 230};
 static int cloud_y[MAX_CLOUDS] = {30, 50};
@@ -351,7 +305,7 @@ static void reset_game(void) {
     dino.anim_tick = 0;
 
     score = 0;
-    speed = 640; // ~2.5 pixels per frame
+    speed = 640; // ~2.5 px/frame
     ground_scroll = 0;
     milestone_blink = 0;
     game_over = 0;
@@ -368,7 +322,6 @@ static void spawn_obstacle(void) {
     }
     if (idx == -1) return;
 
-    // Minimum distance from preceding obstacle
     for (int i = 0; i < MAX_OBS; i++) {
         if (obstacles[i].active && (obstacles[i].x >> 8) > (SCREEN_W - 80)) return;
     }
@@ -379,17 +332,14 @@ static void spawn_obstacle(void) {
     ob->ptero_frame = 0;
 
     int r = rand_next() % 100;
-
-    // Pterodactyls appear once score > 250
     if (score > 250 && r < 35) {
         ob->type = OBS_PTERO;
         ob->w = 18;
         ob->h = 14;
-        // 3 distinct flight altitudes:
         int alt = rand_next() % 3;
-        if (alt == 0)      ob->y = GROUND_Y - 14; // Low: MUST DUCK!
-        else if (alt == 1) ob->y = GROUND_Y - 28; // Mid: MUST JUMP!
-        else               ob->y = GROUND_Y - 45; // High: Fly overhead
+        if (alt == 0)      ob->y = GROUND_Y - 14;
+        else if (alt == 1) ob->y = GROUND_Y - 28;
+        else               ob->y = GROUND_Y - 45;
     } else if (r < 70) {
         ob->type = OBS_CACTUS_SM;
         ob->w = 9;
@@ -403,8 +353,7 @@ static void spawn_obstacle(void) {
     }
 }
 
-// AABB Collision with Chrome's forgiving inner hitboxes
-static int check_collision(Obstacle* ob) {
+static inline int check_collision(Obstacle* ob) {
     int ox = ob->x >> 8;
     int oy = ob->y;
     int ow = ob->w;
@@ -415,11 +364,8 @@ static int check_collision(Obstacle* ob) {
     int dw = dino.is_ducking ? 20 : 12;
     int dh = dino.is_ducking ? 10 : 16;
 
-    if (dx < ox + ow - 2 && dx + dw > ox + 2 &&
-        dy < oy + oh - 2 && dy + dh > oy + 2) {
-        return 1;
-    }
-    return 0;
+    return (dx < ox + ow - 2 && dx + dw > ox + 2 &&
+            dy < oy + oh - 2 && dy + dh > oy + 2);
 }
 
 // ==========================================================================
@@ -427,7 +373,7 @@ static int check_collision(Obstacle* ob) {
 // ==========================================================================
 
 int main(void) {
-    REG_DISPCNT = 0x0404; // Mode 4, BG2 on
+    REG_DISPCNT = 0x0404; // Mode 4
 
     init_sound();
     reset_game();
@@ -436,7 +382,6 @@ int main(void) {
         unsigned short keys = ~REG_KEYINPUT;
 
         if (!game_over) {
-            // Day / Night Switch every 500 points
             int night_phase = (score % 700) >= 500;
             if (night_phase != is_night) {
                 set_theme(night_phase);
@@ -445,25 +390,20 @@ int main(void) {
             // Controls
             if ((keys & KEY_A) || (keys & KEY_UP)) {
                 if (!dino.is_jumping && !dino.is_ducking) {
-                    dino.vy = -1200; // Jump impulse (~4.7 px/frame)
+                    dino.vy = -1200;
                     dino.is_jumping = 1;
                     snd_jump();
                 }
             }
 
-            // Fast-Fall when pressing Down mid-air
             if (keys & KEY_DOWN) {
-                if (dino.is_jumping) {
-                    dino.vy += 80; // Heavy downward pull
-                } else {
-                    dino.is_ducking = 1;
-                }
+                if (dino.is_jumping) dino.vy += 80; // Fast-fall
+                else dino.is_ducking = 1;
             } else {
                 dino.is_ducking = 0;
             }
 
-            // Gravity & Vertical Physics
-            dino.vy += 65; // Gravity
+            dino.vy += 65;
             dino.y += dino.vy;
 
             int floor_y = (dino.is_ducking ? (GROUND_Y - 13) : (GROUND_Y - 20)) << 8;
@@ -473,8 +413,6 @@ int main(void) {
                 dino.is_jumping = 0;
             }
 
-            // Obstacle Movement & Spawning
-            int px_speed = speed >> 8;
             for (int i = 0; i < MAX_OBS; i++) {
                 if (obstacles[i].active) {
                     obstacles[i].x -= speed;
@@ -495,13 +433,9 @@ int main(void) {
                 }
             }
 
-            // Procedural Spawning
-            if ((rand_next() % 100) < 4) {
-                spawn_obstacle();
-            }
+            if ((rand_next() % 100) < 4) spawn_obstacle();
 
-            // Ground & Clouds
-            ground_scroll += px_speed;
+            ground_scroll += (speed >> 8);
             for (int i = 0; i < MAX_CLOUDS; i++) {
                 cloud_x[i] -= 1;
                 if (cloud_x[i] < -20) {
@@ -510,54 +444,60 @@ int main(void) {
                 }
             }
 
-            // Score Progression
             dino.anim_tick++;
             if (dino.anim_tick % 4 == 0) {
                 score++;
                 if (score % 100 == 0) {
                     snd_point();
-                    milestone_blink = 60; // Flash score for 1 sec
+                    milestone_blink = 60;
                 }
-                // Gradually accelerate up to top speed
                 if (speed < 1800) speed += 1;
             }
             if (milestone_blink > 0) milestone_blink--;
 
         } else {
-            // Restart
-            if ((keys & KEY_A) || (keys & KEY_START)) {
-                reset_game();
-            }
+            if ((keys & KEY_A) || (keys & KEY_START)) reset_game();
         }
 
         // ==================================================================
-        // RENDER (Offscreen -> Mode 4 VBlank DMA)
+        // FAST 60 FPS RENDER (Zero Modulo / Cached Row Pointers)
         // ==================================================================
-        clear_screen();
 
-        // 1. Draw Clouds
+        // 1. Instant Hardware Screen Clear
+        clear_screen_dma();
+
+        // 2. Draw Clouds
         for (int i = 0; i < MAX_CLOUDS; i++) {
             for (int y = 0; y < 6; y++) {
+                int sy = cloud_y[i] + y;
+                if (sy >= SCREEN_H) continue;
+                int row = sy * SCREEN_W;
                 for (int x = 0; x < 16; x++) {
                     if (cloud_map[y][x]) {
-                        int cx = cloud_x[i] + x;
-                        int cy = cloud_y[i] + y;
-                        if (cx >= 0 && cx < SCREEN_W) screen[cy * SCREEN_W + cx] = C_CLOUD;
+                        int sx = cloud_x[i] + x;
+                        if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = C_CLOUD;
                     }
                 }
             }
         }
 
-        // 2. Draw Ground Line & Bumps
-        for (int x = 0; x < SCREEN_W; x++) {
-            screen[GROUND_Y * SCREEN_W + x] = C_FG;
-            // Little pebbles scrolling by
-            if (((x + ground_scroll) % 37 == 0) || ((x + ground_scroll) % 59 == 0)) {
-                screen[(GROUND_Y + 2) * SCREEN_W + x] = C_FG;
+        // 3. Fast Ground Line (60 32-bit writes) & Moving Pebbles
+        unsigned int fg4 = (C_FG << 24) | (C_FG << 16) | (C_FG << 8) | C_FG;
+        unsigned int* g_ptr = (unsigned int*)(screen + (GROUND_Y * SCREEN_W));
+        for (int i = 0; i < (SCREEN_W / 4); i++) g_ptr[i] = fg4;
+
+        // 6 scrolling pebbles (no modulo division)
+        int pebble_shift = ground_scroll % 40;
+        int p_row = (GROUND_Y + 2) * SCREEN_W;
+        for (int p = 0; p < 6; p++) {
+            int px = p * 42 - pebble_shift;
+            if (px >= 0 && px < SCREEN_W - 2) {
+                screen[p_row + px] = C_FG;
+                screen[p_row + px + 1] = C_FG;
             }
         }
 
-        // 3. Draw Obstacles
+        // 4. Draw Obstacles (Cached Row Pointers)
         for (int i = 0; i < MAX_OBS; i++) {
             if (!obstacles[i].active) continue;
             int ox = obstacles[i].x >> 8;
@@ -565,86 +505,98 @@ int main(void) {
 
             if (obstacles[i].type == OBS_CACTUS_SM) {
                 for (int y = 0; y < 16; y++) {
+                    int sy = oy + y;
+                    if (sy < 0 || sy >= SCREEN_H) continue;
+                    int row = sy * SCREEN_W;
                     for (int x = 0; x < 9; x++) {
                         if (cactus_small[y][x]) {
-                            int sx = ox + x, sy = oy + y;
-                            if (sx >= 0 && sx < SCREEN_W) screen[sy * SCREEN_W + sx] = C_FG;
+                            int sx = ox + x;
+                            if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = C_FG;
                         }
                     }
                 }
             } else if (obstacles[i].type == OBS_CACTUS_LG) {
                 for (int y = 0; y < 22; y++) {
+                    int sy = oy + y;
+                    if (sy < 0 || sy >= SCREEN_H) continue;
+                    int row = sy * SCREEN_W;
                     for (int x = 0; x < 13; x++) {
                         if (cactus_large[y][x]) {
-                            int sx = ox + x, sy = oy + y;
-                            if (sx >= 0 && sx < SCREEN_W) screen[sy * SCREEN_W + sx] = C_FG;
+                            int sx = ox + x;
+                            if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = C_FG;
                         }
                     }
                 }
             } else if (obstacles[i].type == OBS_PTERO) {
                 const unsigned char (*map)[18] = obstacles[i].ptero_frame ? ptero_up : ptero_down;
                 for (int y = 0; y < 14; y++) {
+                    int sy = oy + y;
+                    if (sy < 0 || sy >= SCREEN_H) continue;
+                    int row = sy * SCREEN_W;
                     for (int x = 0; x < 18; x++) {
                         if (map[y][x]) {
-                            int sx = ox + x, sy = oy + y;
-                            if (sx >= 0 && sx < SCREEN_W) screen[sy * SCREEN_W + sx] = C_FG;
+                            int sx = ox + x;
+                            if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = C_FG;
                         }
                     }
                 }
             }
         }
 
-        // 4. Draw T-Rex
+        // 5. Draw T-Rex
         int dx = dino.x;
         int dy = dino.y >> 8;
         int step = (dino.anim_tick / 6) & 1;
 
         if (dino.is_ducking && !dino.is_jumping) {
             for (int y = 0; y < 13; y++) {
+                int sy = dy + y;
+                if (sy < 0 || sy >= SCREEN_H) continue;
+                int row = sy * SCREEN_W;
                 for (int x = 0; x < 24; x++) {
                     if (dino_duck[y][x]) {
-                        // Leg trot animation
                         if (y >= 10 && ((step && x >= 10) || (!step && x < 10))) continue;
-                        screen[(dy + y) * SCREEN_W + (dx + x)] = C_FG;
+                        int sx = dx + x;
+                        if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = C_FG;
                     }
                 }
             }
         } else {
             for (int y = 0; y < 20; y++) {
+                int sy = dy + y;
+                if (sy < 0 || sy >= SCREEN_H) continue;
+                int row = sy * SCREEN_W;
                 for (int x = 0; x < 18; x++) {
                     if (dino_stand[y][x]) {
-                        // In game-over: X eye!
                         if (dino.dead && y == 2 && x == 12) {
-                            screen[(dy + y) * SCREEN_W + (dx + x)] = C_FG;
+                            screen[row + (dx + x)] = C_FG; // X eye
                             continue;
                         }
-                        // Running legs toggle
                         if (!dino.is_jumping && !dino.dead && y >= 17) {
                             if (step && x >= 8) continue;
                             if (!step && x < 8) continue;
                         }
-                        screen[(dy + y) * SCREEN_W + (dx + x)] = C_FG;
+                        int sx = dx + x;
+                        if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = C_FG;
                     }
                 }
             }
         }
 
-        // 5. Draw High Score & Current Score (Top Right)
-        draw_glyph(160, 8, 10, C_CLOUD); // 'H'
-        draw_glyph(164, 8, 11, C_CLOUD); // 'I'
+        // 6. Draw Score
+        draw_glyph(160, 8, 10, C_CLOUD);
+        draw_glyph(164, 8, 11, C_CLOUD);
         draw_score(172, 8, high_score);
 
-        // Blinking score on 100-point milestones
         if (milestone_blink == 0 || (milestone_blink & 8)) {
             draw_score(204, 8, score);
         }
 
-        // 6. Game Over Text
         if (game_over) {
-            // Draw restart arrow / icon centered
             draw_score(110, 60, score);
         }
 
+        // 7. Push Buffer to VRAM at VBlank
         flip_display();
     }
 
