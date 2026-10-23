@@ -1,5 +1,6 @@
 /* ==========================================================================
- *  CHROME DINO GBA - True Spaced Obstacles + 1:1 Chromium Physics
+ *  GEOMETRY DASH: STEREO MADNESS GBA
+ *  Mode 4 (240x160 8-bit Paletted) - Locked 60 FPS
  * ========================================================================== */
 
 #define REG_DISPCNT     *(volatile unsigned short*)0x04000000
@@ -19,24 +20,18 @@
 #define REG_SOUND1CNT_H *(volatile unsigned short*)0x04000062
 #define REG_SOUND1CNT_X *(volatile unsigned short*)0x04000064
 
-#define REG_SOUND2CNT_L *(volatile unsigned short*)0x04000068
-#define REG_SOUND2CNT_H *(volatile unsigned short*)0x0400006C
-
 #define REG_SOUND4CNT_L *(volatile unsigned short*)0x04000078
 #define REG_SOUND4CNT_H *(volatile unsigned short*)0x0400007C
 
-// --- Controls ---
 #define KEY_A           (1 << 0)
-#define KEY_B           (1 << 1)
-#define KEY_START       (1 << 3)
 #define KEY_UP          (1 << 6)
-#define KEY_DOWN        (1 << 7)
+#define KEY_START       (1 << 3)
 
 #define RGB15(r, g, b)  ((r) | ((g) << 5) | ((b) << 10))
 
 #define SCREEN_W 240
 #define SCREEN_H 160
-#define GROUND_Y 128
+#define FLOOR_Y  126
 
 #define screen       ((unsigned char*)0x02000000)
 #define PALETTE_MEM  ((volatile unsigned short*)0x05000000)
@@ -46,40 +41,52 @@
 #define INT_TO_FP(x)    ((x) << FP_SHIFT)
 #define FP_TO_INT(x)    ((x) >> FP_SHIFT)
 
-// ==========================================================================
-// CHROMIUM 1:1 CONSTANTS
-// ==========================================================================
-#define SPEED_INITIAL       157286  // 2.40 px/frame (scaled 0.4x from Chrome's 6.0)
-#define SPEED_MAX           340787  // 5.20 px/frame (scaled 0.4x from Chrome's 13.0)
-#define SPEED_ACCEL         26      // 0.0004 px/frame (takes 2 full minutes to reach top speed)
+// --- GD Cube Physics ---
+#define CUBE_SIZE       14
+#define HORIZ_SPEED     144179 // 2.20 px/frame (16.16 FP)
+#define GD_GRAVITY      18350  // 0.28 px/frame^2
+#define GD_JUMP_IMP     -340787// -5.20 px/frame (clears 3 blocks high)
+#define GD_PAD_IMP      -425984// -6.50 px/frame (yellow jump pad)
 
-#define GRAVITY             16384   // 0.25 px/frame^2
-#define JUMP_INITIAL_VEL    -275251 // -4.20 px/frame (full jump)
-#define JUMP_DROP_VEL       -137626 // -2.10 px/frame (short-hop cutoff)
-#define FAST_FALL_GRAV      49152   // 3x Gravity drop
+// --- Palette Indices ---
+#define C_TRANS         0
+#define C_BG            1
+#define C_BG_GRID       2
+#define C_FLOOR_LINE    3
+#define C_FLOOR_DARK    4
+#define C_FLOOR_LIGHT   5
+#define C_CUBE_YELLOW   6
+#define C_CUBE_GREEN    7
+#define C_CUBE_EYES     8
+#define C_BLOCK_MAIN    9
+#define C_BLOCK_LINE    10
+#define C_SPIKE_DARK    11
+#define C_SPIKE_LINE    12
+#define C_PAD_YELLOW    13
+#define C_WHITE         14
+#define C_PROG_GREEN    15
 
-// Palette Indices
-#define C_TRANS 0
-#define C_BG    1
-#define C_FG    2
-#define C_CLOUD 3
+static unsigned int bg_fill_word = 0;
 
-static int is_night = 0;
-static unsigned int fill_color = 0;
+static void init_palette(void) {
+    PALETTE_MEM[C_TRANS]       = 0x0000;
+    PALETTE_MEM[C_BG]          = RGB15(2, 2, 8);    // Deep Stereo Madness Indigo
+    PALETTE_MEM[C_BG_GRID]     = RGB15(4, 5, 14);   // Faint Background Grid
+    PALETTE_MEM[C_FLOOR_LINE]  = RGB15(0, 31, 31);  // Glowing Cyan Floor Border
+    PALETTE_MEM[C_FLOOR_DARK]  = RGB15(0, 6, 8);    // Checkered Floor Dark
+    PALETTE_MEM[C_FLOOR_LIGHT] = RGB15(0, 14, 18);  // Checkered Floor Light
+    PALETTE_MEM[C_CUBE_YELLOW] = RGB15(31, 31, 0);  // Iconic Yellow Cube
+    PALETTE_MEM[C_CUBE_GREEN]  = RGB15(0, 26, 8);   // Green Inner Square
+    PALETTE_MEM[C_CUBE_EYES]   = RGB15(31, 31, 31); // White Eyes
+    PALETTE_MEM[C_BLOCK_MAIN]  = RGB15(3, 5, 18);   // Dark Blue Blocks
+    PALETTE_MEM[C_BLOCK_LINE]  = RGB15(8, 16, 31);  // Glowing Blue Block Outline
+    PALETTE_MEM[C_SPIKE_DARK]  = RGB15(3, 4, 6);    // Dark Spike Body
+    PALETTE_MEM[C_SPIKE_LINE]  = RGB15(31, 31, 31); // Pure White Spike Border
+    PALETTE_MEM[C_PAD_YELLOW]  = RGB15(31, 26, 0);  // Jump Pad Yellow
+    PALETTE_MEM[C_WHITE]       = RGB15(31, 31, 31);
+    PALETTE_MEM[C_PROG_GREEN]  = RGB15(0, 31, 6);   // Bright Green Progress Fill
 
-static void set_theme(int night) {
-    is_night = night;
-    PALETTE_MEM[C_TRANS] = 0x0000;
-    if (night) {
-        PALETTE_MEM[C_BG]    = RGB15(4, 4, 4);     // Dark charcoal
-        PALETTE_MEM[C_FG]    = RGB15(28, 28, 28); // Light grey
-        PALETTE_MEM[C_CLOUD] = RGB15(9, 9, 9);
-    } else {
-        PALETTE_MEM[C_BG]    = RGB15(31, 31, 31); // Chrome white
-        PALETTE_MEM[C_FG]    = RGB15(8, 8, 8);    // Charcoal #535353
-        PALETTE_MEM[C_CLOUD] = RGB15(25, 25, 25);
-    }
-    fill_color = (C_BG << 24) | (C_BG << 16) | (C_BG << 8) | C_BG;
+    bg_fill_word = (C_BG << 24) | (C_BG << 16) | (C_BG << 8) | C_BG;
 }
 
 static void init_sound(void) {
@@ -88,99 +95,126 @@ static void init_sound(void) {
     REG_SOUNDCNT_H = 0x0002;
 }
 
-static inline void snd_jump(void)  { REG_SOUND1CNT_L = 0x0000; REG_SOUND1CNT_H = 0xA180; REG_SOUND1CNT_X = 0x8680; }
-static inline void snd_point(void) { REG_SOUND2CNT_L = 0xF180; REG_SOUND2CNT_H = 0x8740; }
-static inline void snd_death(void) { REG_SOUND4CNT_L = 0xC200; REG_SOUND4CNT_H = 0x8052; }
+static inline void snd_jump(void) {
+    REG_SOUND1CNT_L = 0x0000;
+    REG_SOUND1CNT_H = 0xB180;
+    REG_SOUND1CNT_X = 0x8690;
+}
 
-static unsigned int rng = 0x12345678;
+static inline void snd_pad(void) {
+    REG_SOUND1CNT_L = 0x0013;
+    REG_SOUND1CNT_H = 0xF280;
+    REG_SOUND1CNT_X = 0x8720;
+}
+
+static inline void snd_crash(void) {
+    REG_SOUND4CNT_L = 0xF200;
+    REG_SOUND4CNT_H = 0x8032;
+}
+
+static unsigned int rng = 0x98765432;
 static inline unsigned int rand_next(void) {
     rng = rng * 1664525u + 1013904223u;
     return (rng >> 16);
 }
 
 // ==========================================================================
-// SPRITES
+// STEREO MADNESS LEVEL MAP
 // ==========================================================================
+#define T_NONE  0
+#define T_SPIKE 1
+#define T_BLOCK 2
+#define T_PAD   3
 
-static const unsigned char dino_stand[20][18] = {
-    {0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0}, {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1},
-    {0,0,0,0,0,0,0,0,1,1,1,1,0,1,1,1,1,1}, {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1},
-    {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1}, {0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0}, {0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0},
-    {1,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0}, {1,0,0,0,0,1,1,1,1,1,1,1,0,1,0,0,0,0},
-    {1,1,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0}, {1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0},
-    {0,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0}, {0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0},
-    {0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0}, {0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0},
-    {0,0,0,0,1,1,0,0,1,1,0,0,0,0,0,0,0,0}, {0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0},
-    {0,0,0,0,1,1,0,0,0,1,1,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+typedef struct {
+    int gx;   // Grid X (each grid block is 16 pixels wide)
+    int gy;   // Grid Y (0 = on floor, 1 = 1 block high, etc.)
+    int type; // T_SPIKE, T_BLOCK, T_PAD
+} LevelObject;
+
+// Exact obstacle course for the opening section of Stereo Madness
+static const LevelObject level_data[] = {
+    // 1. Warm-up single spikes
+    { 14, 0, T_SPIKE },
+    { 22, 0, T_SPIKE },
+
+    // 2. Double spike
+    { 29, 0, T_SPIKE },
+    { 30, 0, T_SPIKE },
+
+    // 3. First step-up block platform
+    { 36, 0, T_BLOCK },
+    { 37, 0, T_BLOCK },
+    { 38, 0, T_BLOCK },
+
+    // 4. Spike with elevated landing
+    { 44, 0, T_SPIKE },
+    { 45, 1, T_BLOCK },
+    { 46, 1, T_BLOCK },
+
+    // 5. Ascending / Descending staircase
+    { 52, 0, T_BLOCK },
+    { 53, 1, T_BLOCK },
+    { 54, 2, T_BLOCK },
+    { 55, 2, T_BLOCK },
+    { 56, 2, T_BLOCK },
+    { 57, 1, T_BLOCK },
+    { 58, 0, T_BLOCK },
+
+    // 6. Spikes on floor with elevated bridge
+    { 64, 0, T_SPIKE },
+    { 65, 0, T_SPIKE },
+    { 70, 1, T_BLOCK },
+    { 71, 1, T_BLOCK },
+    { 72, 1, T_BLOCK },
+    { 77, 0, T_SPIKE },
+    { 78, 0, T_SPIKE },
+
+    // 7. Yellow Jump Pad launch
+    { 84, 0, T_PAD },
+    { 88, 2, T_BLOCK },
+    { 89, 2, T_BLOCK },
+    { 90, 2, T_BLOCK },
+    { 89, 0, T_SPIKE },
+
+    // 8. The notorious TRIPLE SPIKE
+    { 100, 0, T_SPIKE },
+    { 101, 0, T_SPIKE },
+    { 102, 0, T_SPIKE },
+
+    // 9. Multi-tier platforms
+    { 109, 0, T_BLOCK },
+    { 110, 1, T_BLOCK },
+    { 111, 2, T_BLOCK },
+    { 112, 3, T_BLOCK },
+    { 117, 2, T_BLOCK },
+    { 118, 2, T_BLOCK },
+    { 123, 1, T_BLOCK },
+    { 124, 1, T_BLOCK },
+
+    // 10. Floor spikes beneath gap
+    { 129, 0, T_SPIKE },
+    { 130, 0, T_SPIKE },
+
+    // 11. Final high run into ship portal zone
+    { 135, 1, T_BLOCK },
+    { 136, 1, T_BLOCK },
+    { 137, 1, T_BLOCK },
+    { 138, 1, T_BLOCK },
+    { 143, 0, T_PAD },
+    { 147, 2, T_BLOCK },
+    { 148, 2, T_BLOCK },
+    { 149, 2, T_BLOCK },
+    { 155, 0, T_SPIKE },
+    { 156, 0, T_SPIKE },
+    { 162, 0, T_BLOCK }
 };
 
-static const unsigned char dino_duck[13][24] = {
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1}, {0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,1,1,1,1,1,1}, {0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1},
-    {1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0}, {1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0},
-    {0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0}, {0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0},
-    {0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0}, {0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,1,1,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0}, {0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,1,1,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0}
-};
-
-static const unsigned char cactus_small[16][9] = {
-    {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0}, {0,1,0,1,1,1,0,0,0}, {0,1,0,1,1,1,0,1,0},
-    {0,1,0,1,1,1,0,1,0}, {0,1,1,1,1,1,1,1,0}, {0,0,1,1,1,1,1,0,0}, {0,0,0,1,1,1,0,0,0},
-    {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0},
-    {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0}, {0,0,0,1,1,1,0,0,0}
-};
-
-static const unsigned char cactus_large[22][13] = {
-    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,1,0,0,1,1,1,0,0,0,0,0},
-    {0,0,1,0,0,1,1,1,0,0,1,0,0}, {0,0,1,0,0,1,1,1,0,0,1,0,0}, {0,0,1,0,0,1,1,1,0,0,1,0,0},
-    {0,0,1,1,1,1,1,1,1,1,1,0,0}, {0,0,0,1,1,1,1,1,1,1,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0}, {0,0,0,0,0,1,1,1,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,0,0,0,0,0}
-};
-
-static const unsigned char ptero_up[14][18] = {
-    {0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0},
-    {1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0}, {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0}, {0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
-};
-
-static const unsigned char ptero_down[14][18] = {
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0}, {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0}, {0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
-    {0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0}, {0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
-};
-
-static const unsigned char cloud_map[6][16] = {
-    {0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0}, {0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0},
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0}, {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0}, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
-};
-
-static const unsigned char font3x5[12][5] = {
-    {0x7, 0x5, 0x5, 0x5, 0x7}, {0x2, 0x6, 0x2, 0x2, 0x7},
-    {0x7, 0x1, 0x7, 0x4, 0x7}, {0x7, 0x1, 0x7, 0x1, 0x7},
-    {0x5, 0x5, 0x7, 0x1, 0x1}, {0x7, 0x4, 0x7, 0x1, 0x7},
-    {0x7, 0x4, 0x7, 0x5, 0x7}, {0x7, 0x1, 0x2, 0x4, 0x4},
-    {0x7, 0x5, 0x7, 0x5, 0x7}, {0x7, 0x5, 0x7, 0x1, 0x7},
-    {0x5, 0x5, 0x7, 0x5, 0x5}, // H
-    {0x7, 0x2, 0x2, 0x2, 0x7}  // I
-};
+#define LEVEL_COUNT (sizeof(level_data) / sizeof(LevelObject))
+#define LEVEL_END_PX (175 * 16)
 
 // ==========================================================================
-// RENDER HELPERS
+// RENDER ENGINE
 // ==========================================================================
 
 static inline void vsync(void) {
@@ -189,7 +223,7 @@ static inline void vsync(void) {
 }
 
 static inline void clear_screen_dma(void) {
-    REG_DMA3SAD = (unsigned int)&fill_color;
+    REG_DMA3SAD = (unsigned int)&bg_fill_word;
     REG_DMA3DAD = (unsigned int)screen;
     REG_DMA3CNT = 0x85000000 | (SCREEN_W * SCREEN_H / 4);
 }
@@ -201,161 +235,159 @@ static inline void flip_display(void) {
     REG_DMA3CNT = 0x84000000 | (SCREEN_W * SCREEN_H / 4);
 }
 
-static void draw_glyph(int x, int y, int idx, unsigned char color) {
-    for (int r = 0; r < 5; r++) {
-        int sy = y + r;
-        if (sy >= SCREEN_H) continue;
-        int row = sy * SCREEN_W;
-        unsigned char row_bits = font3x5[idx][r];
-        for (int c = 0; c < 3; c++) {
-            if (row_bits & (1 << (2 - c))) {
-                int sx = x + c;
-                if (sx < SCREEN_W) screen[row + sx] = color;
+static const unsigned char font3x5[10][5] = {
+    {0x7, 0x5, 0x5, 0x5, 0x7}, {0x2, 0x6, 0x2, 0x2, 0x7},
+    {0x7, 0x1, 0x7, 0x4, 0x7}, {0x7, 0x1, 0x7, 0x1, 0x7},
+    {0x5, 0x5, 0x7, 0x1, 0x1}, {0x7, 0x4, 0x7, 0x1, 0x7},
+    {0x7, 0x4, 0x7, 0x5, 0x7}, {0x7, 0x1, 0x2, 0x4, 0x4},
+    {0x7, 0x5, 0x7, 0x5, 0x7}, {0x7, 0x5, 0x7, 0x1, 0x7}
+};
+
+static void draw_num(int x, int y, int val) {
+    char d[4]; int len = 0;
+    if (val == 0) d[len++] = 0;
+    else { while (val > 0 && len < 4) { d[len++] = val % 10; val /= 10; } }
+    for (int i = len - 1; i >= 0; i--) {
+        int v = d[i];
+        for (int r = 0; r < 5; r++) {
+            unsigned char b = font3x5[v][r];
+            for (int c = 0; c < 3; c++) {
+                if (b & (1 << (2 - c))) screen[(y + r) * SCREEN_W + (x + c)] = C_WHITE;
             }
+        }
+        x += 4;
+    }
+}
+
+// Draw GD Triangular Spike
+static void draw_spike(int sx, int sy) {
+    for (int y = 0; y < 16; y++) {
+        int py = sy + y;
+        if (py < 0 || py >= SCREEN_H) continue;
+        int row = py * SCREEN_W;
+        int half_w = (y * 7) / 15; // Pointed triangle taper
+        for (int x = 8 - half_w; x <= 8 + half_w; x++) {
+            int px = sx + x;
+            if (px < 0 || px >= SCREEN_W) continue;
+            unsigned char col = (x == 8 - half_w || x == 8 + half_w || y == 15) ? C_SPIKE_LINE : C_SPIKE_DARK;
+            screen[row + px] = col;
         }
     }
 }
 
-static void draw_score(int x, int y, int score_val) {
-    char digits[5];
-    int temp = score_val;
-    for (int i = 4; i >= 0; i--) {
-        digits[i] = temp % 10;
-        temp /= 10;
+// Draw GD Solid Block
+static void draw_block(int sx, int sy) {
+    for (int y = 0; y < 16; y++) {
+        int py = sy + y;
+        if (py < 0 || py >= SCREEN_H) continue;
+        int row = py * SCREEN_W;
+        for (int x = 0; x < 16; x++) {
+            int px = sx + x;
+            if (px < 0 || px >= SCREEN_W) continue;
+            unsigned char col;
+            if (y == 0 || y == 15 || x == 0 || x == 15) col = C_BLOCK_LINE;
+            else if (y == 2 || y == 13 || x == 2 || x == 13) col = C_BLOCK_LINE;
+            else col = C_BLOCK_MAIN;
+            screen[row + px] = col;
+        }
     }
-    for (int i = 0; i < 5; i++) {
-        draw_glyph(x + i * 4, y, digits[i], C_FG);
+}
+
+// Draw Yellow Jump Pad
+static void draw_pad(int sx, int sy) {
+    int py = sy + 12;
+    if (py < 0 || py >= SCREEN_H) return;
+    int row = py * SCREEN_W;
+    for (int y = 0; y < 4; y++) {
+        for (int x = 1; x < 15; x++) {
+            int px = sx + x;
+            if (px >= 0 && px < SCREEN_W) screen[(py + y) * SCREEN_W + px] = C_PAD_YELLOW;
+        }
+    }
+}
+
+// Draw Player Cube with 8-state rotation
+static void draw_cube(int px, int py, int rot_step) {
+    int center_x = px + (CUBE_SIZE / 2);
+    int center_y = py + (CUBE_SIZE / 2);
+
+    for (int y = 0; y < CUBE_SIZE; y++) {
+        int sy = py + y;
+        if (sy < 0 || sy >= SCREEN_H) continue;
+        int row = sy * SCREEN_W;
+
+        for (int x = 0; x < CUBE_SIZE; x++) {
+            int sx = px + x;
+            if (sx < 0 || sx >= SCREEN_W) continue;
+
+            // Base Cube Coloring
+            unsigned char col = C_CUBE_YELLOW;
+            if (x >= 2 && x <= 11 && y >= 2 && y <= 11) {
+                col = C_CUBE_GREEN; // Inner green square
+            }
+
+            // Eyes that face forward based on rotation angle
+            int ex1 = 4, ey1 = 4, ex2 = 9, ey2 = 4;
+            if (rot_step == 1 || rot_step == 2) { ex1 = 9; ey1 = 4; ex2 = 9; ey2 = 9; }
+            else if (rot_step == 3 || rot_step == 4) { ex1 = 4; ey1 = 9; ex2 = 9; ey2 = 9; }
+            else if (rot_step == 5 || rot_step == 6) { ex1 = 4; ey1 = 4; ex2 = 4; ey2 = 9; }
+
+            if ((x == ex1 && y == ey1) || (x == ex2 && y == ey2)) {
+                col = C_CUBE_EYES;
+            }
+
+            screen[row + sx] = col;
+        }
     }
 }
 
 // ==========================================================================
-// GAME STATE
+// PARTICLES & GAME STATE
 // ==========================================================================
+#define MAX_PARTS 16
+typedef struct { int x, y, vx, vy, active; } Particle;
+static Particle particles[MAX_PARTS];
 
-#define OBS_CACTUS_SM  0
-#define OBS_CACTUS_LG  1
-#define OBS_PTERO      2
-
-#define MAX_OBS 3
 typedef struct {
-    int active;
     int x; // 16.16 FP
-    int y;
-    int type;
-    int w, h;
-    int ptero_frame;
-} Obstacle;
-
-static Obstacle obstacles[MAX_OBS];
-
-typedef struct {
-    int x;
-    int y;  // 16.16 FP
-    int vy; // 16.16 FP
-    int is_jumping;
-    int is_ducking;
+    int y; // 16.16 FP
+    int vy;// 16.16 FP
+    int on_ground;
     int dead;
-    int anim_tick;
-} Dino;
+    int rot_step;
+} Player;
 
-static Dino dino;
-static int distance_ran_fp = 0;
-static int dist_since_last_spawn_fp = 0; // Absolute odometer tracking spacing
-static int next_spawn_gap = 350;         // Required travel distance before next spawn
-static int score = 0;
-static int high_score = 0;
-static int speed_fp = SPEED_INITIAL;
-static int ground_scroll = 0;
-static int milestone_blink = 0;
-static int game_over = 0;
+static Player player;
+static int camera_x = 0;
+static int attempt_num = 1;
+static int death_freeze = 0;
 
-#define MAX_CLOUDS 2
-static int cloud_x[MAX_CLOUDS] = {120, 230};
-static int cloud_y[MAX_CLOUDS] = {30, 50};
+static void trigger_death(void) {
+    player.dead = 1;
+    death_freeze = 30; // 0.5s death scatter animation
+    snd_crash();
 
-static void reset_game(void) {
-    set_theme(0);
+    int px = FP_TO_INT(player.x) - camera_x;
+    int py = FP_TO_INT(player.y);
 
-    dino.x = 24;
-    dino.y = INT_TO_FP(GROUND_Y - 20);
-    dino.vy = 0;
-    dino.is_jumping = 0;
-    dino.is_ducking = 0;
-    dino.dead = 0;
-    dino.anim_tick = 0;
-
-    distance_ran_fp = 0;
-    dist_since_last_spawn_fp = 0;
-    // 350 pixels of pure empty runway at game start (~3-4 seconds of warmup)
-    next_spawn_gap = 350;
-
-    score = 0;
-    speed_fp = SPEED_INITIAL;
-    ground_scroll = 0;
-    milestone_blink = 0;
-    game_over = 0;
-
-    for (int i = 0; i < MAX_OBS; i++) obstacles[i].active = 0;
+    for (int i = 0; i < MAX_PARTS; i++) {
+        particles[i].active = 1;
+        particles[i].x = px + (CUBE_SIZE / 2);
+        particles[i].y = py + (CUBE_SIZE / 2);
+        particles[i].vx = ((rand_next() % 7) - 3);
+        particles[i].vy = ((rand_next() % 7) - 4);
+    }
 }
 
-static void spawn_obstacle(void) {
-    // 1. Must travel at least next_spawn_gap pixels since the last obstacle spawned!
-    if (FP_TO_INT(dist_since_last_spawn_fp) < next_spawn_gap) {
-        return;
-    }
-
-    int idx = -1;
-    for (int i = 0; i < MAX_OBS; i++) {
-        if (!obstacles[i].active) { idx = i; break; }
-    }
-    if (idx == -1) return;
-
-    Obstacle* ob = &obstacles[idx];
-    ob->active = 1;
-    ob->x = INT_TO_FP(SCREEN_W);
-    ob->ptero_frame = 0;
-
-    int r = rand_next() % 100;
-    // Pterodactyls only start appearing after 350 points
-    if (score > 350 && r < 35) {
-        ob->type = OBS_PTERO;
-        ob->w = 18; ob->h = 14;
-        int alt = rand_next() % 3;
-        if (alt == 0)      ob->y = GROUND_Y - 14; // Low (must duck!)
-        else if (alt == 1) ob->y = GROUND_Y - 28; // Mid (must jump!)
-        else               ob->y = GROUND_Y - 45; // High (overhead)
-    } else if (r < 75) {
-        ob->type = OBS_CACTUS_SM;
-        ob->w = 9; ob->h = 16;
-        ob->y = GROUND_Y - 16;
-    } else {
-        ob->type = OBS_CACTUS_LG;
-        ob->w = 13; ob->h = 22;
-        ob->y = GROUND_Y - 22;
-    }
-
-    // Reset odometer
-    dist_since_last_spawn_fp = 0;
-
-    // HUGE SPACING: 220 to 360 pixels!
-    // Since the screen is 240 pixels wide, the previous obstacle will completely
-    // exit the screen before the next obstacle is allowed to appear!
-    next_spawn_gap = 220 + (rand_next() % 140);
-}
-
-static inline int check_collision(Obstacle* ob) {
-    int ox = FP_TO_INT(ob->x);
-    int oy = ob->y;
-    int ow = ob->w;
-    int oh = ob->h;
-
-    int dx = dino.x + 3;
-    int dy = FP_TO_INT(dino.y) + 2;
-    int dw = dino.is_ducking ? 20 : 12;
-    int dh = dino.is_ducking ? 10 : 16;
-
-    return (dx < ox + ow - 2 && dx + dw > ox + 2 &&
-            dy < oy + oh - 2 && dy + dh > oy + 2);
+static void reset_attempt(void) {
+    player.x = INT_TO_FP(20);
+    player.y = INT_TO_FP(FLOOR_Y - CUBE_SIZE);
+    player.vy = 0;
+    player.on_ground = 1;
+    player.dead = 0;
+    player.rot_step = 0;
+    camera_x = 0;
+    for (int i = 0; i < MAX_PARTS; i++) particles[i].active = 0;
 }
 
 // ==========================================================================
@@ -363,108 +395,115 @@ static inline int check_collision(Obstacle* ob) {
 // ==========================================================================
 
 int main(void) {
-    REG_DISPCNT = 0x0404;
+    REG_DISPCNT = 0x0404; // Mode 4
 
+    init_palette();
     init_sound();
-    reset_game();
+    reset_attempt();
 
     while (1) {
         unsigned short keys = ~REG_KEYINPUT;
 
-        if (!game_over) {
-            // Day / Night cycle every 500 points
-            int night_phase = (score % 700) >= 500;
-            if (night_phase != is_night) set_theme(night_phase);
-
-            // Variable jump height (Chromium 1:1)
+        if (!player.dead) {
+            // Jump (Press or Hold A / UP)
             if ((keys & KEY_A) || (keys & KEY_UP)) {
-                if (!dino.is_jumping && !dino.is_ducking) {
-                    dino.vy = JUMP_INITIAL_VEL;
-                    dino.is_jumping = 1;
+                if (player.on_ground) {
+                    player.vy = GD_JUMP_IMP;
+                    player.on_ground = 0;
                     snd_jump();
                 }
+            }
+
+            // Constant Horizontal Speed
+            player.x += HORIZ_SPEED;
+
+            // Gravity & Vertical Motion
+            player.vy += GD_GRAVITY;
+            player.y += player.vy;
+
+            // Mid-air Rotation
+            if (!player.on_ground) {
+                player.rot_step = ((FP_TO_INT(player.x) / 7) % 8);
             } else {
-                if (dino.is_jumping && dino.vy < JUMP_DROP_VEL) {
-                    dino.vy = JUMP_DROP_VEL; // Clamps velocity on release for a mini-hop
-                }
+                player.rot_step = 0; // Snaps flat when on surface
             }
 
-            int grav = GRAVITY;
-            if (keys & KEY_DOWN) {
-                if (dino.is_jumping) {
-                    grav = FAST_FALL_GRAV; // 3x gravity fast-fall
-                } else {
-                    dino.is_ducking = 1;
-                }
+            int px = FP_TO_INT(player.x);
+            int py = FP_TO_INT(player.y);
+
+            // Camera smoothly locks to player
+            camera_x = px - 40;
+            if (camera_x < 0) camera_x = 0;
+
+            // Floor Collision
+            if (py >= FLOOR_Y - CUBE_SIZE) {
+                player.y = INT_TO_FP(FLOOR_Y - CUBE_SIZE);
+                player.vy = 0;
+                player.on_ground = 1;
+                py = FLOOR_Y - CUBE_SIZE;
             } else {
-                dino.is_ducking = 0;
+                player.on_ground = 0;
             }
 
-            dino.vy += grav;
-            dino.y += dino.vy;
+            // Obstacle & Block Collision Checks
+            for (int i = 0; i < LEVEL_COUNT; i++) {
+                int ox = level_data[i].gx * 16;
+                int oy = FLOOR_Y - (level_data[i].gy + 1) * 16;
 
-            int floor_y = INT_TO_FP(dino.is_ducking ? (GROUND_Y - 13) : (GROUND_Y - 20));
-            if (dino.y >= floor_y) {
-                dino.y = floor_y;
-                dino.vy = 0;
-                dino.is_jumping = 0;
-            }
+                // Only test objects near the player
+                if (ox < px - 32 || ox > px + 32) continue;
 
-            // Move Obstacles
-            for (int i = 0; i < MAX_OBS; i++) {
-                if (obstacles[i].active) {
-                    obstacles[i].x -= speed_fp;
-                    if (FP_TO_INT(obstacles[i].x) < -24) {
-                        obstacles[i].active = 0;
+                if (level_data[i].type == T_SPIKE) {
+                    // Forgiving inner triangle hitbox
+                    if (px + CUBE_SIZE - 3 > ox + 4 && px + 3 < ox + 12 &&
+                        py + CUBE_SIZE > oy + 4 && py < oy + 16) {
+                        trigger_death();
+                        break;
                     }
-
-                    if (obstacles[i].type == OBS_PTERO && (dino.anim_tick % 12 == 0)) {
-                        obstacles[i].ptero_frame ^= 1;
+                } else if (level_data[i].type == T_BLOCK) {
+                    // Top Landing Check
+                    if (px + CUBE_SIZE - 2 > ox && px + 2 < ox + 16) {
+                        // Landing on top
+                        if (py + CUBE_SIZE >= oy && py + CUBE_SIZE <= oy + 8 && player.vy >= 0) {
+                            player.y = INT_TO_FP(oy - CUBE_SIZE);
+                            player.vy = 0;
+                            player.on_ground = 1;
+                            py = oy - CUBE_SIZE;
+                        }
+                        // Crash into the side or bottom of block
+                        else if (py + CUBE_SIZE > oy + 8 && py < oy + 16) {
+                            trigger_death();
+                            break;
+                        }
                     }
-
-                    if (check_collision(&obstacles[i])) {
-                        dino.dead = 1;
-                        game_over = 1;
-                        snd_death();
-                        if (score > high_score) high_score = score;
+                } else if (level_data[i].type == T_PAD) {
+                    // Yellow Jump Pad Trigger
+                    if (px + CUBE_SIZE > ox + 2 && px < ox + 14 &&
+                        py + CUBE_SIZE >= oy + 10 && py + CUBE_SIZE <= oy + 18) {
+                        player.vy = GD_PAD_IMP;
+                        player.on_ground = 0;
+                        snd_pad();
                     }
                 }
             }
 
-            // Accumulate distance between obstacles
-            dist_since_last_spawn_fp += speed_fp;
-            spawn_obstacle();
-
-            // Background & Clouds
-            ground_scroll += FP_TO_INT(speed_fp);
-            for (int i = 0; i < MAX_CLOUDS; i++) {
-                cloud_x[i] -= 1;
-                if (cloud_x[i] < -20) {
-                    cloud_x[i] = SCREEN_W + (rand_next() % 40);
-                    cloud_y[i] = 20 + (rand_next() % 40);
-                }
+            // Loop / Complete Level Check
+            if (px >= LEVEL_END_PX) {
+                reset_attempt();
             }
-
-            // Acceleration: +0.0004 px/frame (2 minutes to max speed)
-            if (speed_fp < SPEED_MAX) {
-                speed_fp += SPEED_ACCEL;
-            }
-
-            // Score: 100 points takes ~11 seconds (Chromium exact)
-            distance_ran_fp += speed_fp;
-            int prev_score = score;
-            score = FP_TO_INT(distance_ran_fp) / 16;
-
-            if (score / 100 > prev_score / 100) {
-                snd_point();
-                milestone_blink = 60;
-            }
-            if (milestone_blink > 0) milestone_blink--;
-
-            dino.anim_tick++;
 
         } else {
-            if ((keys & KEY_A) || (keys & KEY_START)) reset_game();
+            // Death freeze & particle update
+            if (death_freeze > 0) {
+                death_freeze--;
+                for (int i = 0; i < MAX_PARTS; i++) {
+                    particles[i].x += particles[i].vx;
+                    particles[i].y += particles[i].vy;
+                }
+            } else {
+                attempt_num++;
+                reset_attempt();
+            }
         }
 
         // ==================================================================
@@ -472,134 +511,79 @@ int main(void) {
         // ==================================================================
         clear_screen_dma();
 
-        // 1. Clouds
-        for (int i = 0; i < MAX_CLOUDS; i++) {
-            for (int y = 0; y < 6; y++) {
-                int sy = cloud_y[i] + y;
-                if (sy >= SCREEN_H) continue;
-                int row = sy * SCREEN_W;
-                for (int x = 0; x < 16; x++) {
-                    if (cloud_map[y][x]) {
-                        int sx = cloud_x[i] + x;
-                        if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = C_CLOUD;
-                    }
-                }
+        // 1. Draw Background Grid (Stereo Madness Wallpaper)
+        int bg_scroll = camera_x / 3;
+        for (int y = 0; y < FLOOR_Y; y += 32) {
+            for (int x = 0; x < SCREEN_W; x++) screen[y * SCREEN_W + x] = C_BG_GRID;
+        }
+        for (int x = 0; x < SCREEN_W; x++) {
+            if ((x + bg_scroll) % 32 == 0) {
+                for (int y = 0; y < FLOOR_Y; y++) screen[y * SCREEN_W + x] = C_BG_GRID;
             }
         }
 
-        // 2. Ground Line & Pebbles
-        unsigned int fg4 = (C_FG << 24) | (C_FG << 16) | (C_FG << 8) | C_FG;
-        unsigned int* g_ptr = (unsigned int*)(screen + (GROUND_Y * SCREEN_W));
-        for (int i = 0; i < (SCREEN_W / 4); i++) g_ptr[i] = fg4;
+        // 2. Draw Checkered Ground & Glowing Border
+        for (int x = 0; x < SCREEN_W; x++) screen[FLOOR_Y * SCREEN_W + x] = C_FLOOR_LINE;
 
-        int pebble_shift = ground_scroll % 40;
-        int p_row = (GROUND_Y + 2) * SCREEN_W;
-        for (int p = 0; p < 6; p++) {
-            int px = p * 42 - pebble_shift;
-            if (px >= 0 && px < SCREEN_W - 2) {
-                screen[p_row + px] = C_FG;
-                screen[p_row + px + 1] = C_FG;
+        for (int y = FLOOR_Y + 1; y < SCREEN_H; y++) {
+            int row = y * SCREEN_W;
+            int check_y = (y / 8) & 1;
+            for (int x = 0; x < SCREEN_W; x++) {
+                int check_x = ((x + camera_x) / 8) & 1;
+                screen[row + x] = (check_x ^ check_y) ? C_FLOOR_DARK : C_FLOOR_LIGHT;
             }
         }
 
-        // 3. Obstacles
-        for (int i = 0; i < MAX_OBS; i++) {
-            if (!obstacles[i].active) continue;
-            int ox = FP_TO_INT(obstacles[i].x);
-            int oy = obstacles[i].y;
+        // 3. Draw Level Objects
+        for (int i = 0; i < LEVEL_COUNT; i++) {
+            int sx = (level_data[i].gx * 16) - camera_x;
+            int sy = FLOOR_Y - (level_data[i].gy + 1) * 16;
 
-            if (obstacles[i].type == OBS_CACTUS_SM) {
-                for (int y = 0; y < 16; y++) {
-                    int sy = oy + y;
-                    if (sy < 0 || sy >= SCREEN_H) continue;
-                    int row = sy * SCREEN_W;
-                    for (int x = 0; x < 9; x++) {
-                        if (cactus_small[y][x]) {
-                            int sx = ox + x;
-                            if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = C_FG;
-                        }
-                    }
-                }
-            } else if (obstacles[i].type == OBS_CACTUS_LG) {
-                for (int y = 0; y < 22; y++) {
-                    int sy = oy + y;
-                    if (sy < 0 || sy >= SCREEN_H) continue;
-                    int row = sy * SCREEN_W;
-                    for (int x = 0; x < 13; x++) {
-                        if (cactus_large[y][x]) {
-                            int sx = ox + x;
-                            if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = C_FG;
-                        }
-                    }
-                }
-            } else if (obstacles[i].type == OBS_PTERO) {
-                const unsigned char (*map)[18] = obstacles[i].ptero_frame ? ptero_up : ptero_down;
-                for (int y = 0; y < 14; y++) {
-                    int sy = oy + y;
-                    if (sy < 0 || sy >= SCREEN_H) continue;
-                    int row = sy * SCREEN_W;
-                    for (int x = 0; x < 18; x++) {
-                        if (map[y][x]) {
-                            int sx = ox + x;
-                            if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = C_FG;
-                        }
-                    }
-                }
-            }
+            if (sx < -16 || sx > SCREEN_W) continue;
+
+            if (level_data[i].type == T_SPIKE) draw_spike(sx, sy);
+            else if (level_data[i].type == T_BLOCK) draw_block(sx, sy);
+            else if (level_data[i].type == T_PAD) draw_pad(sx, sy);
         }
 
-        // 4. Dino
-        int dx = dino.x;
-        int dy = FP_TO_INT(dino.y);
-        int step = (dino.anim_tick / 6) & 1;
-
-        if (dino.is_ducking && !dino.is_jumping) {
-            for (int y = 0; y < 13; y++) {
-                int sy = dy + y;
-                if (sy < 0 || sy >= SCREEN_H) continue;
-                int row = sy * SCREEN_W;
-                for (int x = 0; x < 24; x++) {
-                    if (dino_duck[y][x]) {
-                        if (y >= 10 && ((step && x >= 10) || (!step && x < 10))) continue;
-                        int sx = dx + x;
-                        if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = C_FG;
-                    }
-                }
-            }
+        // 4. Draw Player Cube
+        if (!player.dead) {
+            int draw_px = FP_TO_INT(player.x) - camera_x;
+            int draw_py = FP_TO_INT(player.y);
+            draw_cube(draw_px, draw_py, player.rot_step);
         } else {
-            for (int y = 0; y < 20; y++) {
-                int sy = dy + y;
-                if (sy < 0 || sy >= SCREEN_H) continue;
-                int row = sy * SCREEN_W;
-                for (int x = 0; x < 18; x++) {
-                    if (dino_stand[y][x]) {
-                        if (dino.dead && y == 2 && x == 12) {
-                            screen[row + (dx + x)] = C_FG;
-                            continue;
-                        }
-                        if (!dino.is_jumping && !dino.dead && y >= 17) {
-                            if (step && x >= 8) continue;
-                            if (!step && x < 8) continue;
-                        }
-                        int sx = dx + x;
-                        if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = C_FG;
+            // Draw scatter explosion particles
+            for (int i = 0; i < MAX_PARTS; i++) {
+                if (particles[i].active) {
+                    int ppx = particles[i].x;
+                    int ppy = particles[i].y;
+                    if (ppx >= 0 && ppx < SCREEN_W - 2 && ppy >= 0 && ppy < SCREEN_H - 2) {
+                        screen[ppy * SCREEN_W + ppx] = C_CUBE_YELLOW;
+                        screen[ppy * SCREEN_W + ppx + 1] = C_CUBE_YELLOW;
+                        screen[(ppy + 1) * SCREEN_W + ppx] = C_CUBE_YELLOW;
                     }
                 }
             }
         }
 
-        // 5. Scoreboard
-        draw_glyph(160, 8, 10, C_CLOUD);
-        draw_glyph(164, 8, 11, C_CLOUD);
-        draw_score(172, 8, high_score);
-
-        if (milestone_blink == 0 || (milestone_blink & 8)) {
-            draw_score(204, 8, score);
+        // 5. Draw Progress Bar (0% to 100%)
+        int bar_w = 120;
+        int bar_x = (SCREEN_W - bar_w) / 2;
+        int bar_y = 6;
+        for (int bx = 0; bx < bar_w; bx++) {
+            screen[bar_y * SCREEN_W + (bar_x + bx)] = C_WHITE;
+            screen[(bar_y + 4) * SCREEN_W + (bar_x + bx)] = C_WHITE;
+        }
+        int progress_px = (FP_TO_INT(player.x) * bar_w) / LEVEL_END_PX;
+        if (progress_px > bar_w) progress_px = bar_w;
+        for (int by = 1; by < 4; by++) {
+            for (int bx = 0; bx < progress_px; bx++) {
+                screen[(bar_y + by) * SCREEN_W + (bar_x + bx)] = C_PROG_GREEN;
+            }
         }
 
-        if (game_over) {
-            draw_score(110, 60, score);
-        }
+        // 6. Draw Attempt Counter (Top Left)
+        draw_num(6, 6, attempt_num);
 
         flip_display();
     }
