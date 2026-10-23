@@ -1,6 +1,6 @@
 /* ==========================================================================
- *  CHROME DINO GBA (Ultra-Optimized 60 FPS Engine)
- *  Mode 4 (240x160 8-bit paletted) - Zero Lag / Zero Tearing
+ *  CHROME DINO GBA (Well-Spaced Obstacles Edition)
+ *  Mode 4 (240x160 8-bit paletted) - Locked 60 FPS
  * ========================================================================== */
 
 #define REG_DISPCNT     *(volatile unsigned short*)0x04000000
@@ -209,14 +209,12 @@ static inline void vsync(void) {
     while (REG_VCOUNT < 160);
 }
 
-// Ultra-fast DMA clear using fixed-source 32-bit hardware fill
 static inline void clear_screen_dma(void) {
     REG_DMA3SAD = (unsigned int)&fill_color;
     REG_DMA3DAD = (unsigned int)screen;
-    REG_DMA3CNT = 0x85000000 | (SCREEN_W * SCREEN_H / 4); // Fixed source, 32-bit
+    REG_DMA3CNT = 0x85000000 | (SCREEN_W * SCREEN_H / 4);
 }
 
-// Hardware flip during VBlank
 static inline void flip_display(void) {
     vsync();
     REG_DMA3SAD = (unsigned int)screen;
@@ -289,6 +287,9 @@ static int ground_scroll = 0;
 static int milestone_blink = 0;
 static int game_over = 0;
 
+// Spacing control: minimum pixel distance before another obstacle can spawn
+static int min_spawn_gap = 180;
+
 #define MAX_CLOUDS 2
 static int cloud_x[MAX_CLOUDS] = {120, 230};
 static int cloud_y[MAX_CLOUDS] = {30, 50};
@@ -305,10 +306,13 @@ static void reset_game(void) {
     dino.anim_tick = 0;
 
     score = 0;
-    speed = 640; // ~2.5 px/frame
+    speed = 640;
     ground_scroll = 0;
     milestone_blink = 0;
     game_over = 0;
+
+    // Generous runway at the very start
+    min_spawn_gap = 210;
 
     for (int i = 0; i < MAX_OBS; i++) {
         obstacles[i].active = 0;
@@ -322,8 +326,14 @@ static void spawn_obstacle(void) {
     }
     if (idx == -1) return;
 
+    // Check that ALL active obstacles have moved past the generous gap threshold
     for (int i = 0; i < MAX_OBS; i++) {
-        if (obstacles[i].active && (obstacles[i].x >> 8) > (SCREEN_W - 80)) return;
+        if (obstacles[i].active) {
+            int obs_screen_x = obstacles[i].x >> 8;
+            if (obs_screen_x > (SCREEN_W - min_spawn_gap)) {
+                return; // Previous obstacle hasn't traveled far enough yet!
+            }
+        }
     }
 
     Obstacle* ob = &obstacles[idx];
@@ -331,8 +341,11 @@ static void spawn_obstacle(void) {
     ob->x = SCREEN_W << 8;
     ob->ptero_frame = 0;
 
+    // Set a generous, random distance for the NEXT obstacle (140 to 230 pixels)
+    min_spawn_gap = 140 + (rand_next() % 90);
+
     int r = rand_next() % 100;
-    if (score > 250 && r < 35) {
+    if (score > 300 && r < 35) {
         ob->type = OBS_PTERO;
         ob->w = 18;
         ob->h = 14;
@@ -340,7 +353,7 @@ static void spawn_obstacle(void) {
         if (alt == 0)      ob->y = GROUND_Y - 14;
         else if (alt == 1) ob->y = GROUND_Y - 28;
         else               ob->y = GROUND_Y - 45;
-    } else if (r < 70) {
+    } else if (r < 75) {
         ob->type = OBS_CACTUS_SM;
         ob->w = 9;
         ob->h = 16;
@@ -373,7 +386,7 @@ static inline int check_collision(Obstacle* ob) {
 // ==========================================================================
 
 int main(void) {
-    REG_DISPCNT = 0x0404; // Mode 4
+    REG_DISPCNT = 0x0404;
 
     init_sound();
     reset_game();
@@ -397,7 +410,7 @@ int main(void) {
             }
 
             if (keys & KEY_DOWN) {
-                if (dino.is_jumping) dino.vy += 80; // Fast-fall
+                if (dino.is_jumping) dino.vy += 80;
                 else dino.is_ducking = 1;
             } else {
                 dino.is_ducking = 0;
@@ -433,7 +446,8 @@ int main(void) {
                 }
             }
 
-            if ((rand_next() % 100) < 4) spawn_obstacle();
+            // Check obstacle spawning with spaced intervals
+            spawn_obstacle();
 
             ground_scroll += (speed >> 8);
             for (int i = 0; i < MAX_CLOUDS; i++) {
@@ -460,13 +474,11 @@ int main(void) {
         }
 
         // ==================================================================
-        // FAST 60 FPS RENDER (Zero Modulo / Cached Row Pointers)
+        // RENDER
         // ==================================================================
-
-        // 1. Instant Hardware Screen Clear
         clear_screen_dma();
 
-        // 2. Draw Clouds
+        // 1. Draw Clouds
         for (int i = 0; i < MAX_CLOUDS; i++) {
             for (int y = 0; y < 6; y++) {
                 int sy = cloud_y[i] + y;
@@ -481,12 +493,11 @@ int main(void) {
             }
         }
 
-        // 3. Fast Ground Line (60 32-bit writes) & Moving Pebbles
+        // 2. Draw Ground Line & Pebbles
         unsigned int fg4 = (C_FG << 24) | (C_FG << 16) | (C_FG << 8) | C_FG;
         unsigned int* g_ptr = (unsigned int*)(screen + (GROUND_Y * SCREEN_W));
         for (int i = 0; i < (SCREEN_W / 4); i++) g_ptr[i] = fg4;
 
-        // 6 scrolling pebbles (no modulo division)
         int pebble_shift = ground_scroll % 40;
         int p_row = (GROUND_Y + 2) * SCREEN_W;
         for (int p = 0; p < 6; p++) {
@@ -497,7 +508,7 @@ int main(void) {
             }
         }
 
-        // 4. Draw Obstacles (Cached Row Pointers)
+        // 3. Draw Obstacles
         for (int i = 0; i < MAX_OBS; i++) {
             if (!obstacles[i].active) continue;
             int ox = obstacles[i].x >> 8;
@@ -543,7 +554,7 @@ int main(void) {
             }
         }
 
-        // 5. Draw T-Rex
+        // 4. Draw T-Rex
         int dx = dino.x;
         int dy = dino.y >> 8;
         int step = (dino.anim_tick / 6) & 1;
@@ -569,7 +580,7 @@ int main(void) {
                 for (int x = 0; x < 18; x++) {
                     if (dino_stand[y][x]) {
                         if (dino.dead && y == 2 && x == 12) {
-                            screen[row + (dx + x)] = C_FG; // X eye
+                            screen[row + (dx + x)] = C_FG;
                             continue;
                         }
                         if (!dino.is_jumping && !dino.dead && y >= 17) {
@@ -583,7 +594,7 @@ int main(void) {
             }
         }
 
-        // 6. Draw Score
+        // 5. Draw Score
         draw_glyph(160, 8, 10, C_CLOUD);
         draw_glyph(164, 8, 11, C_CLOUD);
         draw_score(172, 8, high_score);
@@ -596,7 +607,6 @@ int main(void) {
             draw_score(110, 60, score);
         }
 
-        // 7. Push Buffer to VRAM at VBlank
         flip_display();
     }
 
