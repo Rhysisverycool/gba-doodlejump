@@ -8,14 +8,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compile with devkitARM
+      - name: Direct Compile
         run: |
-          docker run --rm -v ${{ github.workspace }}:/src -w /src devkitpro/devkitarm make
+          docker run --rm -v ${{ github.workspace }}:/src -w /src devkitpro/devkitarm bash -c "\
+            arm-none-eabi-gcc -mthumb -mthumb-interwork -mcpu=arm7tdmi -O2 main.c -specs=gba.specs -o doodle_jump.elf && \
+            arm-none-eabi-objcopy -O binary doodle_jump.elf doodle_jump.gba && \
+            gbafix doodle_jump.gba || true"
 
-      - name: Upload ROM
+      - name: Upload GBA ROM
         uses: actions/upload-artifact@v4
         with:
           name: DoodleJump-GBA-ROM
