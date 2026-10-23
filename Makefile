@@ -7,7 +7,6 @@ OBJCOPY := $(PREFIX)objcopy
 TARGET  := doodle_jump
 SRCS    := main.c
 
-# GBA Compiler Flags
 CFLAGS  := -mthumb -mthumb-interwork -mcpu=arm7tdmi -O2 -Wall -fomit-frame-pointer
 LDFLAGS := -mthumb -mthumb-interwork -specs=gba.specs
 
