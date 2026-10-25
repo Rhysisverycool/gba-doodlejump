@@ -116,12 +116,12 @@ static void load_palette(enum Theme theme) {
     current_theme = theme;
     PALETTE_MEM[PAL_TRANS] = 0x0000;
 
-    // Entity Colors (Identical across themes for contrast)
+    // Entity Colors
     PALETTE_MEM[PAL_DINO_OUTLINE] = RGB15(3, 7, 5);
     PALETTE_MEM[PAL_DINO_DARK]    = RGB15(6, 15, 8);
-    PALETTE_MEM[PAL_DINO_MAIN]    = RGB15(11, 23, 11); // Classic retro reptile green
+    PALETTE_MEM[PAL_DINO_MAIN]    = RGB15(11, 23, 11);
     PALETTE_MEM[PAL_DINO_LIGHT]   = RGB15(17, 28, 14);
-    PALETTE_MEM[PAL_DINO_BELLY]   = RGB15(27, 29, 21); // Pale cream
+    PALETTE_MEM[PAL_DINO_BELLY]   = RGB15(27, 29, 21);
     PALETTE_MEM[PAL_DINO_WHITE]   = RGB15(31, 31, 31);
     PALETTE_MEM[PAL_DINO_EYE]     = RGB15(2, 2, 2);
     PALETTE_MEM[PAL_DINO_RED]     = RGB15(28, 6, 6);
@@ -134,7 +134,7 @@ static void load_palette(enum Theme theme) {
 
     PALETTE_MEM[PAL_PTERO_OUTLINE]= RGB15(8, 3, 3);
     PALETTE_MEM[PAL_PTERO_BODY]   = RGB15(24, 12, 8);
-    PALETTE_MEM[PAL_PTERO_WING]   = RGB15(29, 7, 6);  // Crimson leathery wings
+    PALETTE_MEM[PAL_PTERO_WING]   = RGB15(29, 7, 6);
     PALETTE_MEM[PAL_PTERO_BEAK]   = RGB15(31, 22, 6);
 
     PALETTE_MEM[PAL_DUST_LIGHT]   = RGB15(26, 25, 21);
@@ -144,7 +144,6 @@ static void load_palette(enum Theme theme) {
     PALETTE_MEM[PAL_TEXT_SHADOW]  = RGB15(4, 4, 4);
 
     if (theme == THEME_DAY) {
-        // Bright Desert Day Sky & Terrain
         for (int i = 0; i < 8; i++) {
             int r = 16 + i * 2;
             int g = 22 + i;
@@ -165,7 +164,6 @@ static void load_palette(enum Theme theme) {
         PALETTE_MEM[PAL_SAND_DARK]  = RGB15(17, 13, 9);
         PALETTE_MEM[PAL_PEBBLE]     = RGB15(12, 10, 8);
     } else if (theme == THEME_SUNSET) {
-        // Fiery Sunset
         for (int i = 0; i < 8; i++) {
             int r = 24 + i;
             int g = 8 + (i * 2);
@@ -187,7 +185,6 @@ static void load_palette(enum Theme theme) {
         PALETTE_MEM[PAL_SAND_DARK]  = RGB15(12, 6, 5);
         PALETTE_MEM[PAL_PEBBLE]     = RGB15(8, 4, 4);
     } else {
-        // Deep Indigo Starry Night
         for (int i = 0; i < 8; i++) {
             int r = 1 + i / 3;
             int g = 2 + i / 2;
@@ -214,10 +211,6 @@ static void load_palette(enum Theme theme) {
 // ==========================================================================
 // SPRITE PIXEL ART
 // ==========================================================================
-
-// Color Key:
-// '.' = 0, 'O' = Outline, 'D' = Dark, 'G' = Main, 'L' = Light, 'B' = Belly
-// 'W' = White, 'K' = Eye/Pupil, 'R' = Red/Blush, 'F' = Flower/Wing Accent, 'Y' = Beak
 
 static const char* dino_run0[22] = {
     "..........OOOOOO......",
@@ -348,7 +341,7 @@ static const char* dino_dead[22] = {
     "..........OOOOOO......",
     "........OOGLLLLGGO....",
     ".......OGLLLLLLLLGO...",
-    ".......OGLLRKRGLGGO...", // Red surprised eye with 'X'
+    ".......OGLLRKRGLGGO...",
     ".......OGLLLLLLGGGO...",
     ".......OGLLGGGGGOOO...",
     ".......OGLLLLLLGO.....",
@@ -427,7 +420,7 @@ static const char* cactus_small_art[18] = {
 };
 
 static const char* cactus_tall_art[26] = {
-    "......FF......", // Flower on top!
+    "......FF......",
     ".....FFFF.....",
     "......OO......",
     "....OOLLGGO...",
@@ -455,7 +448,7 @@ static const char* cactus_tall_art[26] = {
     "...OOOOOOOO..."
 };
 
-static const char* ptero_frame0[16] = { // Wings Up
+static const char* ptero_frame0[16] = {
     "...........OO..................",
     "..........OFFO.................",
     ".........OFFFFO................",
@@ -474,7 +467,7 @@ static const char* ptero_frame0[16] = { // Wings Up
     "..............................."
 };
 
-static const char* ptero_frame1[16] = { // Wings Glide
+static const char* ptero_frame1[16] = {
     "...............................",
     "...............................",
     "...............................",
@@ -490,10 +483,10 @@ static const char* ptero_frame1[16] = { // Wings Glide
     "...............................",
     "...............................",
     "...............................",
-    "...............................
+    "..............................."
 };
 
-static const char* ptero_frame2[16] = { // Wings Down
+static const char* ptero_frame2[16] = {
     "...............................",
     "...............................",
     "...............................",
@@ -592,7 +585,7 @@ static void init_sound(void) {
 }
 
 static inline void snd_jump(void)  {
-    REG_SOUND1CNT_L = 0x0015; // Sweep pitch up!
+    REG_SOUND1CNT_L = 0x0015;
     REG_SOUND1CNT_H = 0xB240;
     REG_SOUND1CNT_X = 0x8640;
 }
@@ -606,14 +599,13 @@ static inline void snd_point(void) {
 }
 
 static inline void snd_death(void) {
-    REG_SOUND4CNT_L = 0xF300; // Noise crash
+    REG_SOUND4CNT_L = 0xF300;
     REG_SOUND4CNT_H = 0x8054;
-    REG_SOUND1CNT_L = 0x003A; // Descending tone
+    REG_SOUND1CNT_L = 0x003A;
     REG_SOUND1CNT_H = 0xA280;
     REG_SOUND1CNT_X = 0x8200;
 }
 
-// PRNG
 static unsigned int rng = 0x87654321;
 static inline unsigned int rand_next(void) {
     rng = rng * 1664525u + 1013904223u;
@@ -626,8 +618,8 @@ static inline unsigned int rand_next(void) {
 #define MAX_PARTICLES 28
 typedef struct {
     int active;
-    int x, y;   // 16.16 FP
-    int vx, vy; // 16.16 FP
+    int x, y;
+    int vx, vy;
     int life;
     int max_life;
     unsigned char color;
@@ -656,7 +648,7 @@ static void update_particles(void) {
         if (particles[i].active) {
             particles[i].x += particles[i].vx;
             particles[i].y += particles[i].vy;
-            particles[i].vy += 1200; // Particle gravity
+            particles[i].vy += 1200;
             particles[i].life--;
             if (particles[i].life <= 0) particles[i].active = 0;
         }
@@ -673,7 +665,7 @@ static void update_particles(void) {
 
 typedef struct {
     int active;
-    int x; // 16.16 FP
+    int x;
     int y;
     int type;
     int w, h;
@@ -684,8 +676,8 @@ static Obstacle obstacles[MAX_OBS];
 
 typedef struct {
     int x;
-    int y;  // 16.16 FP
-    int vy; // 16.16 FP
+    int y;
+    int vy;
     int is_jumping;
     int is_ducking;
     int was_jumping;
@@ -752,9 +744,9 @@ static void spawn_obstacle(void) {
         ob->w = SPR_PTERO_W;
         ob->h = SPR_PTERO_H;
         int alt = rand_next() % 3;
-        if (alt == 0)      ob->y = GROUND_Y - 14; // Low (must duck!)
-        else if (alt == 1) ob->y = GROUND_Y - 28; // Mid (must jump!)
-        else               ob->y = GROUND_Y - 48; // High (overhead)
+        if (alt == 0)      ob->y = GROUND_Y - 14;
+        else if (alt == 1) ob->y = GROUND_Y - 28;
+        else               ob->y = GROUND_Y - 48;
     } else if (r < 72) {
         ob->type = OBS_CACTUS_SM;
         ob->w = SPR_CSM_W;
@@ -798,7 +790,7 @@ static inline void flip_screen_dma(void) {
     vsync();
     REG_DMA3SAD = (unsigned int)back_buffer;
     REG_DMA3DAD = (unsigned int)VRAM;
-    REG_DMA3CNT = 0x84000000 | (SCREEN_W * SCREEN_H / 2); // 16-bit copy
+    REG_DMA3CNT = 0x84000000 | (SCREEN_W * SCREEN_H / 2);
 }
 
 static void draw_sprite(int sx, int sy, const unsigned char* sprite, int w, int h) {
@@ -817,10 +809,9 @@ static void draw_sprite(int sx, int sy, const unsigned char* sprite, int w, int 
     }
 }
 
-// 4x6 Font Glyphs
 static const unsigned short font4x6[12] = {
     0x6999, 0x2222, 0xE178, 0xE161, 0x99F1, 0xF8E1, 0xF8E9, 0xF124, 0x6969, 0x6971,
-    0x99F9, 0xF44E // 'H', 'I'
+    0x99F9, 0xF44E
 };
 
 static void draw_glyph(int x, int y, int idx, unsigned char color) {
@@ -858,7 +849,7 @@ static void draw_number(int x, int y, int val, unsigned char col) {
 // ==========================================================================
 
 int main(void) {
-    REG_DISPCNT = 0x0404; // Mode 4, BG2 enabled
+    REG_DISPCNT = 0x0404;
     init_sound();
     init_all_sprites();
     reset_game();
@@ -867,7 +858,6 @@ int main(void) {
         unsigned short keys = ~REG_KEYINPUT;
 
         if (!game_over) {
-            // Dynamic Time of Day Transition
             int phase = (score % 900);
             if (phase < 450) {
                 if (current_theme != THEME_DAY) load_palette(THEME_DAY);
@@ -877,30 +867,27 @@ int main(void) {
                 if (current_theme != THEME_NIGHT) load_palette(THEME_NIGHT);
             }
 
-            // Input: Chromium 1:1 Jump & Variable Fall
             dino.was_jumping = dino.is_jumping;
             if ((keys & KEY_A) || (keys & KEY_UP)) {
                 if (!dino.is_jumping && !dino.is_ducking) {
                     dino.vy = JUMP_INITIAL_VEL;
                     dino.is_jumping = 1;
                     snd_jump();
-                    // Dust puff on jump liftoff
                     spawn_particle(dino.x + 6, GROUND_Y - 2, -0x8000, -0x8000, 10, PAL_DUST_LIGHT);
                     spawn_particle(dino.x + 10, GROUND_Y - 2, -0x4000, -0xC000, 12, PAL_DUST_DARK);
                 }
             } else {
                 if (dino.is_jumping && dino.vy < JUMP_DROP_VEL) {
-                    dino.vy = JUMP_DROP_VEL; // Short-hop cutoff
+                    dino.vy = JUMP_DROP_VEL;
                 }
             }
 
             int grav = GRAVITY;
             if (keys & KEY_DOWN) {
                 if (dino.is_jumping) {
-                    grav = FAST_FALL_GRAV; // 3x fast-fall
+                    grav = FAST_FALL_GRAV;
                 } else {
                     dino.is_ducking = 1;
-                    // Dust while sliding
                     if ((dino.anim_tick & 3) == 0) {
                         spawn_particle(dino.x - 2, GROUND_Y - 3, -speed_fp / 2, -0x4000, 8, PAL_DUST_LIGHT);
                     }
@@ -918,19 +905,16 @@ int main(void) {
                 dino.vy = 0;
                 dino.is_jumping = 0;
 
-                // Dust burst upon landing!
                 if (dino.was_jumping) {
                     spawn_particle(dino.x + 2, GROUND_Y - 2, -0xA000, -0x8000, 12, PAL_DUST_LIGHT);
                     spawn_particle(dino.x + 16, GROUND_Y - 2, 0x8000, -0x8000, 12, PAL_DUST_LIGHT);
                 }
             }
 
-            // Running footstep dust
             if (!dino.is_jumping && !dino.is_ducking && (dino.anim_tick % 8 == 0)) {
                 spawn_particle(dino.x + 2, GROUND_Y - 2, -speed_fp / 3, -0x3000, 8, PAL_DUST_LIGHT);
             }
 
-            // Move Obstacles
             for (int i = 0; i < MAX_OBS; i++) {
                 if (obstacles[i].active) {
                     obstacles[i].x -= speed_fp;
@@ -1006,7 +990,6 @@ int main(void) {
                 }
             }
         } else {
-            // Crescent Moon & Twinkling Stars
             int moon_x = 190, moon_y = 25;
             for (int dy = -5; dy <= 5; dy++) {
                 for (int dx = -5; dx <= 5; dx++) {
@@ -1015,7 +998,6 @@ int main(void) {
                     }
                 }
             }
-            // Twinkling Stars
             for (int s = 0; s < 12; s++) {
                 int sx = (s * 37 + (ground_scroll / 32)) % (SCREEN_W - 10) + 5;
                 int sy = 10 + (s * 17) % 55;
@@ -1023,7 +1005,7 @@ int main(void) {
             }
         }
 
-        // 3. Parallax Layer 1: Distant Mesas (0.1x Speed)
+        // 3. Parallax Layer 1: Distant Mesas
         int mesa_scroll = (ground_scroll >> 4) % 120;
         for (int x = 0; x < SCREEN_W; x++) {
             int mx = (x + mesa_scroll) % 120;
@@ -1033,7 +1015,7 @@ int main(void) {
             }
         }
 
-        // 4. Parallax Layer 2: Rolling Dunes (0.35x Speed)
+        // 4. Parallax Layer 2: Dunes
         int dune_scroll = (ground_scroll >> 2) % 80;
         for (int x = 0; x < SCREEN_W; x++) {
             int dx = (x + dune_scroll) % 80;
@@ -1043,7 +1025,7 @@ int main(void) {
             }
         }
 
-        // 5. Foreground Ground Strata & Texture
+        // 5. Ground Strata & Texture
         for (int y = GROUND_Y; y < SCREEN_H; y++) {
             int pal = (y == GROUND_Y) ? PAL_SAND_TOP : ((y < GROUND_Y + 6) ? PAL_SAND_SUB : PAL_SAND_DARK);
             unsigned int fill = pal | (pal << 8) | (pal << 16) | (pal << 24);
@@ -1051,7 +1033,6 @@ int main(void) {
             for (int x = 0; x < SCREEN_W / 4; x++) line[x] = fill;
         }
 
-        // Scrolling Desert Grass & Pebbles
         int g_off = ground_scroll % 60;
         for (int p = 0; p < 5; p++) {
             int px = p * 55 - g_off;
@@ -1103,17 +1084,15 @@ int main(void) {
         } else if (dino.is_jumping) {
             draw_sprite(dx, dy, (const unsigned char*)spr_dino_jump, SPR_DINO_W, SPR_DINO_H);
         } else {
-            int run_frame = (dino.anim_tick / 4) % 4; // 4-Frame fluid run
+            int run_frame = (dino.anim_tick / 4) % 4;
             draw_sprite(dx, dy, (const unsigned char*)spr_dino_run[run_frame], SPR_DINO_W, SPR_DINO_H);
         }
 
         // 9. HUD / Scoreboard
-        // High Score
         draw_glyph(152, 6, 10, PAL_TEXT_GOLD);
         draw_glyph(157, 6, 11, PAL_TEXT_GOLD);
         draw_number(166, 6, high_score, PAL_TEXT_GOLD);
 
-        // Current Score
         if (milestone_blink == 0 || (milestone_blink & 8)) {
             draw_number(204, 6, score, PAL_TEXT_WHITE);
         }
