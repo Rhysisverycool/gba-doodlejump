@@ -57,8 +57,9 @@
 #define JUMP_DROP_VEL   -137626 // Short-hop cutoff
 #define FAST_FALL_GRAV  49152   // 3x Gravity drop
 
-// EWRAM Back-Buffer (aligned to 32 bits for fast DMA3 copy)
-static unsigned char back_buffer[SCREEN_W * SCREEN_H] __attribute__((aligned(4)));
+// Put back-buffer explicitly in EWRAM (256 KB at 0x02000000) so it does NOT touch IWRAM
+#define BACK_BUFFER_ADDR 0x02000000
+static unsigned char* const back_buffer = (unsigned char*)BACK_BUFFER_ADDR;
 
 // ==========================================================================
 // COLOR PALETTE SYSTEM (256 Colors)
@@ -209,327 +210,160 @@ static void load_palette(enum Theme theme) {
 }
 
 // ==========================================================================
-// SPRITE PIXEL ART
-// ==========================================================================
-
-static const char* dino_run0[22] = {
-    "..........OOOOOO......",
-    "........OOGLLLLGGO....",
-    ".......OGLLLLLLLLGO...",
-    ".......OGLLWKLGLGGO...",
-    ".......OGLLLLLLGGGO...",
-    ".......OGLLGGGGGOOO...",
-    ".......OGLLLLLLGO.....",
-    ".......OGGLLGGGO......",
-    "OO....OOGGGGGGO.......",
-    "OGOOOOGGGGGGBBO.......",
-    "OGGGGGGGGGGBBBO.......",
-    ".OGGGGGGGGGBBBO.......",
-    "..OGGGGGGGGBBO........",
-    "...OGGGGGGGGO.........",
-    "....OGGGGGGGO.........",
-    ".....OGGGGGGO.........",
-    "......OGGOOGGO........",
-    "......OGGO.OGGO.......",
-    "......OGGO..OGGO......",
-    "......OGGO...OO.......",
-    ".....OOOGG............",
-    "......................"
-};
-
-static const char* dino_run1[22] = {
-    "......................",
-    "..........OOOOOO......",
-    "........OOGLLLLGGO....",
-    ".......OGLLLLLLLLGO...",
-    ".......OGLLWKLGLGGO...",
-    ".......OGLLLLLLGGGO...",
-    ".......OGLLGGGGGOOO...",
-    ".......OGLLLLLLGO.....",
-    ".......OGGLLGGGO......",
-    "OO....OOGGGGGGO.......",
-    "OGOOOOGGGGGGBBO.......",
-    "OGGGGGGGGGGBBBO.......",
-    ".OGGGGGGGGGBBBO.......",
-    "..OGGGGGGGGBBO........",
-    "...OGGGGGGGGO.........",
-    "....OGGGGGGGO.........",
-    ".....OGGGGGGO.........",
-    "......OGGGGO..........",
-    "......OGGOGGO.........",
-    "......OGG.OGG.........",
-    "......OO..OO..........",
-    "......................"
-};
-
-static const char* dino_run2[22] = {
-    "..........OOOOOO......",
-    "........OOGLLLLGGO....",
-    ".......OGLLLLLLLLGO...",
-    ".......OGLLWKLGLGGO...",
-    ".......OGLLLLLLGGGO...",
-    ".......OGLLGGGGGOOO...",
-    ".......OGLLLLLLGO.....",
-    ".......OGGLLGGGO......",
-    "OO....OOGGGGGGO.......",
-    "OGOOOOGGGGGGBBO.......",
-    "OGGGGGGGGGGBBBO.......",
-    ".OGGGGGGGGGBBBO.......",
-    "..OGGGGGGGGBBO........",
-    "...OGGGGGGGGO.........",
-    "....OGGGGGGGO.........",
-    ".....OGGGGGGO.........",
-    "......OGGOOGGO........",
-    ".....OGGO..OGGO.......",
-    "....OGGO...OGGO.......",
-    "....OO.....OGGO.......",
-    "..........OOOGG.......",
-    "......................"
-};
-
-static const char* dino_run3[22] = {
-    "..........OOOOOO......",
-    "........OOGLLLLGGO....",
-    ".......OGLLLLLLLLGO...",
-    ".......OGLLWKLGLGGO...",
-    ".......OGLLLLLLGGGO...",
-    ".......OGLLGGGGGOOO...",
-    ".......OGLLLLLLGO.....",
-    ".......OGGLLGGGO......",
-    "OO....OOGGGGGGO.......",
-    "OGOOOOGGGGGGBBO.......",
-    "OGGGGGGGGGGBBBO.......",
-    ".OGGGGGGGGGBBBO.......",
-    "..OGGGGGGGGBBO........",
-    "...OGGGGGGGGO.........",
-    "....OGGGGGGGO.........",
-    ".....OGGGGGGO.........",
-    "......OGGGGO..........",
-    "......OGGGGO..........",
-    "......OGGOGG..........",
-    "......OGG.OGG.........",
-    ".....OO....OO.........",
-    "......................"
-};
-
-static const char* dino_jump[22] = {
-    "..........OOOOOO......",
-    "........OOGLLLLGGO....",
-    ".......OGLLLLLLLLGO...",
-    ".......OGLLWKLGLGGO...",
-    ".......OGLLLLLLGGGO...",
-    ".......OGLLGGGGGOOO...",
-    ".......OGLLLLLLGO.....",
-    "OO....OOGLLGGGO.......",
-    "OGOOOOGGGGGGGGO.......",
-    ".OGGGGGGGGGBBBO.......",
-    "..OGGGGGGGGBBBO.......",
-    "...OGGGGGGGBBO........",
-    "....OGGGGGGGGO........",
-    ".....OGGGGGGO.........",
-    "......OGGGGO..........",
-    "......OGGOOO..........",
-    ".....OGGO.OOO.........",
-    "....OOOGG.OGGO........",
-    "..........OO..........",
-    "......................",
-    "......................",
-    "......................"
-};
-
-static const char* dino_dead[22] = {
-    "..........OOOOOO......",
-    "........OOGLLLLGGO....",
-    ".......OGLLLLLLLLGO...",
-    ".......OGLLRKRGLGGO...",
-    ".......OGLLLLLLGGGO...",
-    ".......OGLLGGGGGOOO...",
-    ".......OGLLLLLLGO.....",
-    ".......OGGLLGGGO......",
-    "OO....OOGGGGGGO.......",
-    "OGOOOOGGGGGGBBO.......",
-    "OGGGGGGGGGGBBBO.......",
-    ".OGGGGGGGGGBBBO.......",
-    "..OGGGGGGGGBBO........",
-    "...OGGGGGGGGO.........",
-    "....OGGGGGGGO.........",
-    ".....OGGGGGGO.........",
-    "......OGGOOGGO........",
-    ".....OGGO...OGGO......",
-    "....OGGO.....OGGO.....",
-    "....OO........OO......",
-    "......................",
-    "......................"
-};
-
-static const char* dino_duck0[15] = {
-    "....................OOOOOO............",
-    "..................OOGLLLLGGO..........",
-    ".................OGLLLLLLLLGO.........",
-    ".................OGLLWKLGLGGO.........",
-    ".................OGLLLLLLGGGO.........",
-    "OO....OOOOOOOOOOOOGLLGGGGGOOO.........",
-    "OGOOOOGGGGGGGGGGGGGLLLLLLGO...........",
-    ".OGGGGGGGGGGGGGGGBBLLGGGO.............",
-    "..OGGGGGGGGGGGGGGBBBOOO...............",
-    "...OGGGGGGGGGGGGGBBBO.................",
-    "....OGGGGGGGGGGGGBBO..................",
-    ".....OGGGGOOOGGGGO....................",
-    ".....OGGO...OGGO......................",
-    "....OOOGG..OOOGG......................",
-    "......................................"
-};
-
-static const char* dino_duck1[15] = {
-    "....................OOOOOO............",
-    "..................OOGLLLLGGO..........",
-    ".................OGLLLLLLLLGO.........",
-    ".................OGLLWKLGLGGO.........",
-    ".................OGLLLLLLGGGO.........",
-    "OO....OOOOOOOOOOOOGLLGGGGGOOO.........",
-    "OGOOOOGGGGGGGGGGGGGLLLLLLGO...........",
-    ".OGGGGGGGGGGGGGGGBBLLGGGO.............",
-    "..OGGGGGGGGGGGGGGBBBOOO...............",
-    "...OGGGGGGGGGGGGGBBBO.................",
-    "....OGGGGGGGGGGGGBBO..................",
-    ".....OGGGGOOOGGGGO....................",
-    "......OGGO.OGGO.......................",
-    "......OO...OO.........................",
-    "......................................"
-};
-
-static const char* cactus_small_art[18] = {
-    "....OOOO....",
-    "...OLLGGO...",
-    "...OLLGGO...",
-    ".OOOLLGGO...",
-    ".OGGLLGGO.OO",
-    ".OGGLLGGOGGO",
-    ".OGGLLGGOGGO",
-    ".OGGLLLLLLGO",
-    "..OOLLLLGGO.",
-    "...OLLGGOO..",
-    "...OLLGGO...",
-    "...OLLGGO...",
-    "...OLLGGO...",
-    "...OLLGGO...",
-    "...OLLGGO...",
-    "...OLLGGO...",
-    "...OLLGGO...",
-    "...OOOOOO..."
-};
-
-static const char* cactus_tall_art[26] = {
-    "......FF......",
-    ".....FFFF.....",
-    "......OO......",
-    "....OOLLGGO...",
-    "...OLLLLGGO...",
-    "...OLLLLGGO...",
-    ".OOOLLLLGGO...",
-    ".OGGLLLLGGO.OO",
-    ".OGGLLLLGGOGGO",
-    ".OGGLLLLGGOGGO",
-    ".OGGLLLLGGOGGO",
-    ".OGGLLLLLLLLGO",
-    "..OOLLLLLLGGO.",
-    "...OLLLLGGOO..",
-    "...OLLLLGGO...",
-    "...OLLLLGGO...",
-    "...OLLLLGGO...",
-    "...OLLLLGGO...",
-    "...OLLLLGGO...",
-    "...OLLLLGGO...",
-    "...OLLLLGGO...",
-    "...OLLLLGGO...",
-    "...OLLLLGGO...",
-    "...OLLLLGGO...",
-    "...OLLLLGGO...",
-    "...OOOOOOOO..."
-};
-
-static const char* ptero_frame0[16] = {
-    "...........OO..................",
-    "..........OFFO.................",
-    ".........OFFFFO................",
-    "........OFFFFFLLOO.............",
-    ".......OFFFFFFFFLLOO...........",
-    "......OFFFFFFFFFFLLLO..........",
-    "OOOO.OFFFFFFFFFFFFLLO..........",
-    "OBBBOOFFFFFFFFFFFFFLLO..OOOO...",
-    "OBBBBOOFFFFFFFFFFFFFLLOOOBBBO..",
-    ".OBBBBBOOFFFFFFFFFFFFLLOBBBOO..",
-    "..OBBBBBBOOOOOOOOOOOOOOWKBYYYO.",
-    "...OBBBBBBBBBBBBBBBBBBBBBYYYYO.",
-    "....OOOOOBBBBBBBBBBBBBBBBYYYO..",
-    "........OOOOOOOOOOOOOOOOOOOO...",
-    "...............................",
-    "..............................."
-};
-
-static const char* ptero_frame1[16] = {
-    "...............................",
-    "...............................",
-    "...............................",
-    "...............................",
-    "OOOO....................OOOO...",
-    "OBBBBOOOOOOOOOOOOOOOOOOOBBBOO..",
-    ".OBBBBLLLLLLLLLLLLLLLLLOWKBYYYO",
-    "..OBBBFFFFFFFFFFFFFFFFFFBYYYYO.",
-    "...OBBFFFFFFFFFFFFFFFFFFBYYYO..",
-    "....OOOOOBBBBBBBBBBBBBBBOOOO...",
-    "........OOOOOOOOOOOOOOOO.......",
-    "...............................",
-    "...............................",
-    "...............................",
-    "...............................",
-    "..............................."
-};
-
-static const char* ptero_frame2[16] = {
-    "...............................",
-    "...............................",
-    "...............................",
-    "...............................",
-    "...............................",
-    "OOOO....................OOOO...",
-    "OBBBOOOOOOOOOOOOOOOOOOOOBBBOO..",
-    ".OBBBBLLLLLLLLLLLLLLLLLOWKBYYYO",
-    "..OBBBBBBBBBBBBBBBBBBBBBBYYYYO.",
-    "...OBBBBBOOFFFFFFFFFFFFFBYYYO..",
-    "....OOOO.OFFFFFFFFFFFFFFOOOO...",
-    "........OFFFFFFFFFFFLLLO.......",
-    ".......OFFFFFFFFLLLLOO.........",
-    "......OFFFFFLLLLOO.............",
-    ".....OFFFLO....................",
-    ".....OOOO......................"
-};
-
-// ==========================================================================
-// SPRITE PARSING & BUFFERING
+// SPRITE PIXEL ART (Direct 2D char arrays stored strictly in ROM)
 // ==========================================================================
 
 #define SPR_DINO_W 22
 #define SPR_DINO_H 22
-static unsigned char spr_dino_run[4][SPR_DINO_H][SPR_DINO_W];
-static unsigned char spr_dino_jump[SPR_DINO_H][SPR_DINO_W];
-static unsigned char spr_dino_dead[SPR_DINO_H][SPR_DINO_W];
+
+static const char dino_run0[22][23] = {
+    "..........OOOOOO......", "........OOGLLLLGGO....", ".......OGLLLLLLLLGO...",
+    ".......OGLLWKLGLGGO...", ".......OGLLLLLLGGGO...", ".......OGLLGGGGGOOO...",
+    ".......OGLLLLLLGO.....", ".......OGGLLGGGO......", "OO....OOGGGGGGO.......",
+    "OGOOOOGGGGGGBBO.......", "OGGGGGGGGGGBBBO.......", ".OGGGGGGGGGBBBO.......",
+    "..OGGGGGGGGBBO........", "...OGGGGGGGGO.........", "....OGGGGGGGO.........",
+    ".....OGGGGGGO.........", "......OGGOOGGO........", "......OGGO.OGGO.......",
+    "......OGGO..OGGO......", "......OGGO...OO.......", ".....OOOGG............",
+    "......................"
+};
+
+static const char dino_run1[22][23] = {
+    "......................", "..........OOOOOO......", "........OOGLLLLGGO....",
+    ".......OGLLLLLLLLGO...", ".......OGLLWKLGLGGO...", ".......OGLLLLLLGGGO...",
+    ".......OGLLGGGGGOOO...", ".......OGLLLLLLGO.....", ".......OGGLLGGGO......",
+    "OO....OOGGGGGGO.......", "OGOOOOGGGGGGBBO.......", "OGGGGGGGGGGBBBO.......",
+    ".OGGGGGGGGGBBBO.......", "..OGGGGGGGGBBO........", "...OGGGGGGGGO.........",
+    "....OGGGGGGGO.........", ".....OGGGGGGO.........", "......OGGGGO..........",
+    "......OGGOGGO.........", "......OGG.OGG.........", "......OO..OO..........",
+    "......................"
+};
+
+static const char dino_run2[22][23] = {
+    "..........OOOOOO......", "........OOGLLLLGGO....", ".......OGLLLLLLLLGO...",
+    ".......OGLLWKLGLGGO...", ".......OGLLLLLLGGGO...", ".......OGLLGGGGGOOO...",
+    ".......OGLLLLLLGO.....", ".......OGGLLGGGO......", "OO....OOGGGGGGO.......",
+    "OGOOOOGGGGGGBBO.......", "OGGGGGGGGGGBBBO.......", ".OGGGGGGGGGBBBO.......",
+    "..OGGGGGGGGBBO........", "...OGGGGGGGGO.........", "....OGGGGGGGO.........",
+    ".....OGGGGGGO.........", "......OGGOOGGO........", ".....OGGO..OGGO.......",
+    "....OGGO...OGGO.......", "....OO.....OGGO.......", "..........OOOGG.......",
+    "......................"
+};
+
+static const char dino_run3[22][23] = {
+    "..........OOOOOO......", "........OOGLLLLGGO....", ".......OGLLLLLLLLGO...",
+    ".......OGLLWKLGLGGO...", ".......OGLLLLLLGGGO...", ".......OGLLGGGGGOOO...",
+    ".......OGLLLLLLGO.....", ".......OGGLLGGGO......", "OO....OOGGGGGGO.......",
+    "OGOOOOGGGGGGBBO.......", "OGGGGGGGGGGBBBO.......", ".OGGGGGGGGGBBBO.......",
+    "..OGGGGGGGGBBO........", "...OGGGGGGGGO.........", "....OGGGGGGGO.........",
+    ".....OGGGGGGO.........", "......OGGGGO..........", "......OGGGGO..........",
+    "......OGGOGG..........", "......OGG.OGG.........", ".....OO....OO.........",
+    "......................"
+};
+
+static const char dino_jump[22][23] = {
+    "..........OOOOOO......", "........OOGLLLLGGO....", ".......OGLLLLLLLLGO...",
+    ".......OGLLWKLGLGGO...", ".......OGLLLLLLGGGO...", ".......OGLLGGGGGOOO...",
+    ".......OGLLLLLLGO.....", "OO....OOGLLGGGO.......", "OGOOOOGGGGGGGGO.......",
+    ".OGGGGGGGGGBBBO.......", "..OGGGGGGGGBBBO.......", "...OGGGGGGGBBO........",
+    "....OGGGGGGGGO........", ".....OGGGGGGO.........", "......OGGGGO..........",
+    "......OGGOOO..........", ".....OGGO.OOO.........", "....OOOGG.OGGO........",
+    "..........OO..........", "......................", "......................",
+    "......................"
+};
+
+static const char dino_dead[22][23] = {
+    "..........OOOOOO......", "........OOGLLLLGGO....", ".......OGLLLLLLLLGO...",
+    ".......OGLLRKRGLGGO...", ".......OGLLLLLLGGGO...", ".......OGLLGGGGGOOO...",
+    ".......OGLLLLLLGO.....", ".......OGGLLGGGO......", "OO....OOGGGGGGO.......",
+    "OGOOOOGGGGGGBBO.......", "OGGGGGGGGGGBBBO.......", ".OGGGGGGGGGBBBO.......",
+    "..OGGGGGGGGBBO........", "...OGGGGGGGGO.........", "....OGGGGGGGO.........",
+    ".....OGGGGGGO.........", "......OGGOOGGO........", ".....OGGO...OGGO......",
+    "....OGGO.....OGGO.....", "....OO........OO......", "......................",
+    "......................"
+};
 
 #define SPR_DUCK_W 38
 #define SPR_DUCK_H 15
-static unsigned char spr_dino_duck[2][SPR_DUCK_H][SPR_DUCK_W];
+
+static const char dino_duck0[15][39] = {
+    "....................OOOOOO............", "..................OOGLLLLGGO..........",
+    ".................OGLLLLLLLLGO.........", ".................OGLLWKLGLGGO.........",
+    ".................OGLLLLLLGGGO.........", "OO....OOOOOOOOOOOOGLLGGGGGOOO.........",
+    "OGOOOOGGGGGGGGGGGGGLLLLLLGO...........", ".OGGGGGGGGGGGGGGGBBLLGGGO.............",
+    "..OGGGGGGGGGGGGGGBBBOOO...............", "...OGGGGGGGGGGGGGBBBO.................",
+    "....OGGGGGGGGGGGGBBO..................", ".....OGGGGOOOGGGGO....................",
+    ".....OGGO...OGGO......................", "....OOOGG..OOOGG......................",
+    "......................................"
+};
+
+static const char dino_duck1[15][39] = {
+    "....................OOOOOO............", "..................OOGLLLLGGO..........",
+    ".................OGLLLLLLLLGO.........", ".................OGLLWKLGLGGO.........",
+    ".................OGLLLLLLGGGO.........", "OO....OOOOOOOOOOOOGLLGGGGGOOO.........",
+    "OGOOOOGGGGGGGGGGGGGLLLLLLGO...........", ".OGGGGGGGGGGGGGGGBBLLGGGO.............",
+    "..OGGGGGGGGGGGGGGBBBOOO...............", "...OGGGGGGGGGGGGGBBBO.................",
+    "....OGGGGGGGGGGGGBBO..................", ".....OGGGGOOOGGGGO....................",
+    "......OGGO.OGGO.......................", "......OO...OO.........................",
+    "......................................"
+};
 
 #define SPR_CSM_W 12
 #define SPR_CSM_H 18
-static unsigned char spr_cactus_sm[SPR_CSM_H][SPR_CSM_W];
+
+static const char cactus_small_art[18][13] = {
+    "....OOOO....", "...OLLGGO...", "...OLLGGO...", ".OOOLLGGO...", ".OGGLLGGO.OO",
+    ".OGGLLGGOGGO", ".OGGLLGGOGGO", ".OGGLLLLLLGO", "..OOLLLLGGO.", "...OLLGGOO..",
+    "...OLLGGO...", "...OLLGGO...", "...OLLGGO...", "...OLLGGO...", "...OLLGGO...",
+    "...OLLGGO...", "...OLLGGO...", "...OOOOOO..."
+};
 
 #define SPR_CLG_W 14
 #define SPR_CLG_H 26
-static unsigned char spr_cactus_lg[SPR_CLG_H][SPR_CLG_W];
+
+static const char cactus_tall_art[26][15] = {
+    "......FF......", ".....FFFF.....", "......OO......", "....OOLLGGO...", "...OLLLLGGO...",
+    "...OLLLLGGO...", ".OOOLLLLGGO...", ".OGGLLLLGGO.OO", ".OGGLLLLGGOGGO", ".OGGLLLLGGOGGO",
+    ".OGGLLLLGGOGGO", ".OGGLLLLLLLLGO", "..OOLLLLLLGGO.", "...OLLLLGGOO..", "...OLLLLGGO...",
+    "...OLLLLGGO...", "...OLLLLGGO...", "...OLLLLGGO...", "...OLLLLGGO...", "...OLLLLGGO...",
+    "...OLLLLGGO...", "...OLLLLGGO...", "...OLLLLGGO...", "...OLLLLGGO...", "...OLLLLGGO...",
+    "...OOOOOOOO..."
+};
 
 #define SPR_PTERO_W 31
 #define SPR_PTERO_H 16
-static unsigned char spr_ptero[3][SPR_PTERO_H][SPR_PTERO_W];
+
+static const char ptero_frame0[16][32] = {
+    "...........OO..................", "..........OFFO.................",
+    ".........OFFFFO................", "........OFFFFFLLOO.............",
+    ".......OFFFFFFFFLLOO...........", "......OFFFFFFFFFFLLLO..........",
+    "OOOO.OFFFFFFFFFFFFLLO..........", "OBBBOOFFFFFFFFFFFFFLLO..OOOO...",
+    "OBBBBOOFFFFFFFFFFFFFLLOOOBBBO..", ".OBBBBBOOFFFFFFFFFFFFLLOBBBOO..",
+    "..OBBBBBBOOOOOOOOOOOOOOWKBYYYO.", "...OBBBBBBBBBBBBBBBBBBBBBYYYYO.",
+    "....OOOOOBBBBBBBBBBBBBBBBYYYO..", "........OOOOOOOOOOOOOOOOOOOO...",
+    "...............................", "..............................."
+};
+
+static const char ptero_frame1[16][32] = {
+    "...............................", "...............................",
+    "...............................", "...............................",
+    "OOOO....................OOOO...", "OBBBBOOOOOOOOOOOOOOOOOOOBBBOO..",
+    ".OBBBBLLLLLLLLLLLLLLLLLOWKBYYYO", "..OBBBFFFFFFFFFFFFFFFFFFBYYYYO.",
+    "...OBBFFFFFFFFFFFFFFFFFFBYYYO..", "....OOOOOBBBBBBBBBBBBBBBOOOO...",
+    "........OOOOOOOOOOOOOOOO.......", "...............................",
+    "...............................", "...............................",
+    "...............................", "..............................."
+};
+
+static const char ptero_frame2[16][32] = {
+    "...............................", "...............................",
+    "...............................", "...............................",
+    "...............................", "OOOO....................OOOO...",
+    "OBBBOOOOOOOOOOOOOOOOOOOOBBBOO..", ".OBBBBLLLLLLLLLLLLLLLLLOWKBYYYO",
+    "..OBBBBBBBBBBBBBBBBBBBBBBYYYYO.", "...OBBBBBOOFFFFFFFFFFFFFBYYYO..",
+    "....OOOO.OFFFFFFFFFFFFFFOOOO...", "........OFFFFFFFFFFFLLLO.......",
+    ".......OFFFFFFFFLLLLOO.........", "......OFFFFFLLLLOO.............",
+    ".....OFFFLO....................", ".....OOOO......................"
+};
 
 static unsigned char map_char_to_pal(char c) {
     switch (c) {
@@ -547,32 +381,22 @@ static unsigned char map_char_to_pal(char c) {
     }
 }
 
-static void decode_sprite(const char** ascii, unsigned char* dest, int w, int h) {
+// Direct drawing from ROM (0 bytes of RAM allocated!)
+static void draw_rom_sprite(int sx, int sy, const char* art, int pitch, int w, int h) {
     for (int y = 0; y < h; y++) {
+        int py = sy + y;
+        if (py < 0 || py >= SCREEN_H) continue;
+        int row = py * SCREEN_W;
+        const char* src_row = art + (y * pitch);
         for (int x = 0; x < w; x++) {
-            dest[y * w + x] = map_char_to_pal(ascii[y][x]);
+            int px = sx + x;
+            if (px < 0 || px >= SCREEN_W) continue;
+            unsigned char col = map_char_to_pal(src_row[x]);
+            if (col != PAL_TRANS) {
+                back_buffer[row + px] = col;
+            }
         }
     }
-}
-
-static void init_all_sprites(void) {
-    decode_sprite(dino_run0, (unsigned char*)spr_dino_run[0], SPR_DINO_W, SPR_DINO_H);
-    decode_sprite(dino_run1, (unsigned char*)spr_dino_run[1], SPR_DINO_W, SPR_DINO_H);
-    decode_sprite(dino_run2, (unsigned char*)spr_dino_run[2], SPR_DINO_W, SPR_DINO_H);
-    decode_sprite(dino_run3, (unsigned char*)spr_dino_run[3], SPR_DINO_W, SPR_DINO_H);
-
-    decode_sprite(dino_jump, (unsigned char*)spr_dino_jump, SPR_DINO_W, SPR_DINO_H);
-    decode_sprite(dino_dead, (unsigned char*)spr_dino_dead, SPR_DINO_W, SPR_DINO_H);
-
-    decode_sprite(dino_duck0, (unsigned char*)spr_dino_duck[0], SPR_DUCK_W, SPR_DUCK_H);
-    decode_sprite(dino_duck1, (unsigned char*)spr_dino_duck[1], SPR_DUCK_W, SPR_DUCK_H);
-
-    decode_sprite(cactus_small_art, (unsigned char*)spr_cactus_sm, SPR_CSM_W, SPR_CSM_H);
-    decode_sprite(cactus_tall_art, (unsigned char*)spr_cactus_lg, SPR_CLG_W, SPR_CLG_H);
-
-    decode_sprite(ptero_frame0, (unsigned char*)spr_ptero[0], SPR_PTERO_W, SPR_PTERO_H);
-    decode_sprite(ptero_frame1, (unsigned char*)spr_ptero[1], SPR_PTERO_W, SPR_PTERO_H);
-    decode_sprite(ptero_frame2, (unsigned char*)spr_ptero[2], SPR_PTERO_W, SPR_PTERO_H);
 }
 
 // ==========================================================================
@@ -615,13 +439,12 @@ static inline unsigned int rand_next(void) {
 // ==========================================================================
 // PARTICLE SYSTEM
 // ==========================================================================
-#define MAX_PARTICLES 28
+#define MAX_PARTICLES 24
 typedef struct {
     int active;
     int x, y;
     int vx, vy;
     int life;
-    int max_life;
     unsigned char color;
 } Particle;
 
@@ -636,7 +459,6 @@ static void spawn_particle(int x, int y, int vx, int vy, int life, unsigned char
             particles[i].vx = vx;
             particles[i].vy = vy;
             particles[i].life = life;
-            particles[i].max_life = life;
             particles[i].color = color;
             break;
         }
@@ -793,22 +615,6 @@ static inline void flip_screen_dma(void) {
     REG_DMA3CNT = 0x84000000 | (SCREEN_W * SCREEN_H / 2);
 }
 
-static void draw_sprite(int sx, int sy, const unsigned char* sprite, int w, int h) {
-    for (int y = 0; y < h; y++) {
-        int py = sy + y;
-        if (py < 0 || py >= SCREEN_H) continue;
-        int row = py * SCREEN_W;
-        for (int x = 0; x < w; x++) {
-            int px = sx + x;
-            if (px < 0 || px >= SCREEN_W) continue;
-            unsigned char col = sprite[y * w + x];
-            if (col != PAL_TRANS) {
-                back_buffer[row + px] = col;
-            }
-        }
-    }
-}
-
 static const unsigned short font4x6[12] = {
     0x6999, 0x2222, 0xE178, 0xE161, 0x99F1, 0xF8E1, 0xF8E9, 0xF124, 0x6969, 0x6971,
     0x99F9, 0xF44E
@@ -851,7 +657,6 @@ static void draw_number(int x, int y, int val, unsigned char col) {
 int main(void) {
     REG_DISPCNT = 0x0404;
     init_sound();
-    init_all_sprites();
     reset_game();
 
     while (1) {
@@ -978,7 +783,7 @@ int main(void) {
             for (int x = 0; x < SCREEN_W / 4; x++) line[x] = fill;
         }
 
-        // 2. Celestial Body (Sun / Moon)
+        // 2. Sun / Moon & Stars
         if (current_theme == THEME_DAY || current_theme == THEME_SUNSET) {
             int sun_x = 180;
             int sun_y = (current_theme == THEME_DAY) ? 24 : 50;
@@ -1064,11 +869,13 @@ int main(void) {
             int oy = obstacles[i].y + shake_offset_y;
 
             if (obstacles[i].type == OBS_CACTUS_SM) {
-                draw_sprite(ox, oy, (const unsigned char*)spr_cactus_sm, SPR_CSM_W, SPR_CSM_H);
+                draw_rom_sprite(ox, oy, (const char*)cactus_small_art, 13, SPR_CSM_W, SPR_CSM_H);
             } else if (obstacles[i].type == OBS_CACTUS_LG) {
-                draw_sprite(ox, oy, (const unsigned char*)spr_cactus_lg, SPR_CLG_W, SPR_CLG_H);
+                draw_rom_sprite(ox, oy, (const char*)cactus_tall_art, 15, SPR_CLG_W, SPR_CLG_H);
             } else if (obstacles[i].type == OBS_PTERO) {
-                draw_sprite(ox, oy, (const unsigned char*)spr_ptero[obstacles[i].anim_frame], SPR_PTERO_W, SPR_PTERO_H);
+                const char* ptero_art = (obstacles[i].anim_frame == 0) ? (const char*)ptero_frame0 :
+                                        (obstacles[i].anim_frame == 1) ? (const char*)ptero_frame1 : (const char*)ptero_frame2;
+                draw_rom_sprite(ox, oy, ptero_art, 32, SPR_PTERO_W, SPR_PTERO_H);
             }
         }
 
@@ -1077,15 +884,19 @@ int main(void) {
         int dy = FP_TO_INT(dino.y) + shake_offset_y;
 
         if (dino.dead) {
-            draw_sprite(dx, dy, (const unsigned char*)spr_dino_dead, SPR_DINO_W, SPR_DINO_H);
+            draw_rom_sprite(dx, dy, (const char*)dino_dead, 23, SPR_DINO_W, SPR_DINO_H);
         } else if (dino.is_ducking && !dino.is_jumping) {
             int duck_frame = (dino.anim_tick / 4) & 1;
-            draw_sprite(dx, dy, (const unsigned char*)spr_dino_duck[duck_frame], SPR_DUCK_W, SPR_DUCK_H);
+            const char* duck_art = duck_frame ? (const char*)dino_duck1 : (const char*)dino_duck0;
+            draw_rom_sprite(dx, dy, duck_art, 39, SPR_DUCK_W, SPR_DUCK_H);
         } else if (dino.is_jumping) {
-            draw_sprite(dx, dy, (const unsigned char*)spr_dino_jump, SPR_DINO_W, SPR_DINO_H);
+            draw_rom_sprite(dx, dy, (const char*)dino_jump, 23, SPR_DINO_W, SPR_DINO_H);
         } else {
             int run_frame = (dino.anim_tick / 4) % 4;
-            draw_sprite(dx, dy, (const unsigned char*)spr_dino_run[run_frame], SPR_DINO_W, SPR_DINO_H);
+            const char* run_art = (run_frame == 0) ? (const char*)dino_run0 :
+                                  (run_frame == 1) ? (const char*)dino_run1 :
+                                  (run_frame == 2) ? (const char*)dino_run2 : (const char*)dino_run3;
+            draw_rom_sprite(dx, dy, run_art, 23, SPR_DINO_W, SPR_DINO_H);
         }
 
         // 9. HUD / Scoreboard
