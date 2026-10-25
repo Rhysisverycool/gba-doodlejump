@@ -381,8 +381,7 @@ void init_graphics() {
     load_art(16, 20, 20, art_dino_run1, 4, 4);    // Tile 16
     load_art(32, 20, 20, art_dino_run2, 4, 4);    // Tile 32
     load_art(48, 20, 20, art_dino_run3, 4, 4);    // Tile 48
-    load_art(64, 20, 20, art_dino_run4, 4, 4);    // Tile 64 (uses run2 again below)
-    load_art(64, 20, 20, art_dino_run2, 4, 4);
+    load_art(64, 20, 20, art_dino_run2, 4, 4);    // Tile 64 (Re-uses run2 for 4th frame!)
     load_art(80, 28, 12, art_dino_duck1, 4, 2);   // Tile 80
     load_art(96, 28, 12, art_dino_duck2, 4, 2);   // Tile 96
     load_art(112, 20, 20, art_dino_dead, 4, 4);   // Tile 112
