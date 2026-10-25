@@ -1,6 +1,6 @@
 /* ==========================================================================
  *  DOODLE JUMP GBA - 60FPS Canvas Edition (1:1 Physics)
- *  Zero Sprite Tearing, Zero Cropping, Flawless Dimensions
+ *  Fully Repaired, Zero Sprite Tearing, Zero Cropping
  * ========================================================================== */
 
 #define REG_DISPCNT     *(volatile unsigned short*)0x04000000
@@ -31,6 +31,7 @@
 #define KEY_START       (1 << 3)
 #define KEY_RIGHT       (1 << 4)
 #define KEY_LEFT        (1 << 5)
+#define KEY_UP          (1 << 6)
 #define KEY_DOWN        (1 << 7)
 
 #define RGB15(r, g, b)  ((r) | ((g) << 5) | ((b) << 10))
@@ -38,131 +39,98 @@
 #define SCREEN_W 240
 #define SCREEN_H 160
 
-#define screen       ((unsigned char*)0x02000000)
-#define bg_template  ((unsigned char*)0x0200A000)
-#define PALETTE_MEM  ((volatile unsigned short*)0x05000000)
+#define screen       ((unsigned short*)0x02000000)
+#define bg_template  ((unsigned short*)0x02012C00) // 75 KB offset for double buffer
 
 // 16.16 Fixed Point Math (Chromium 1:1 Physics)
 #define FP_SHIFT        16
 #define INT_TO_FP(x)    ((x) << FP_SHIFT)
 #define FP_TO_INT(x)    ((x) >> FP_SHIFT)
 
-#define SPEED_MAX       340787  // 5.20 px/frame
-#define SPEED_ACCEL     26      // 0.0004 px/frame
 #define GRAVITY         16384   // 0.25 px/frame^2
 #define JUMP_VEL        -275251 // -4.20 px/frame
 #define JUMP_DROP_VEL   -137626 // -2.10 px/frame (variable jump cutoff)
 #define FAST_FALL       49152   // 3x Gravity drop
 #define SPRING_VEL      -430000 // Super bounce
 
-// --- Palette Indices ---
-#define C_TRANS      0
-#define C_PAPER      1
-#define C_GRID       2
-#define C_RED1       3
-#define C_RED2       4
-#define C_TEXT       5
+#define COLOR_PAPER      RGB15(31, 31, 28)
+#define COLOR_GRID       RGB15(25, 27, 29)
+#define COLOR_RED1       RGB15(28, 12, 12)
+#define COLOR_RED2       RGB15(29, 18, 18)
+#define COLOR_TEXT       RGB15(4, 5, 7)
 
-#define C_DOOD_LINE  6
-#define C_DOOD_BODY  7
-#define C_DOOD_EYE   8
-#define C_DOOD_PUPIL 9
-#define C_DOOD_HOLE  10
-#define C_DOOD_LEG   11
+#define COLOR_DOOD_LINE  RGB15(6, 10, 2)
+#define COLOR_DOOD_BODY  RGB15(23, 29, 6)
+#define COLOR_DOOD_EYE   RGB15(31, 31, 31)
+#define COLOR_DOOD_PUPIL RGB15(0, 0, 0)
+#define COLOR_DOOD_HOLE  RGB15(4, 6, 1)
+#define COLOR_DOOD_LEG   RGB15(15, 20, 4)
 
-#define C_PLAT_HIGH  12
-#define C_PLAT_MAIN  13
-#define C_PLAT_SHAD  14
-#define C_PLAT_LINE  15
+#define COLOR_PLAT_HIGH  RGB15(25, 31, 12)
+#define COLOR_PLAT_MAIN  RGB15(14, 27, 6)
+#define COLOR_PLAT_SHAD  RGB15(7, 18, 3)
+#define COLOR_PLAT_LINE  RGB15(2, 9, 2)
 
-#define C_BLUE_HIGH  16
-#define C_BLUE_MAIN  17
-#define C_BLUE_SHAD  18
+#define COLOR_BLUE_HIGH  RGB15(18, 28, 31)
+#define COLOR_BLUE_MAIN  RGB15(8, 19, 29)
+#define COLOR_BLUE_SHAD  RGB15(4, 11, 20)
 
-#define C_WOOD_MAIN  19
-#define C_WOOD_SHAD  20
-#define C_WOOD_CRACK 21
+#define COLOR_WOOD_MAIN  RGB15(20, 13, 7)
+#define COLOR_WOOD_SHAD  RGB15(12, 7, 3)
+#define COLOR_WOOD_CRACK RGB15(5, 3, 1)
 
-#define C_SPRING_GRY 22
-#define C_SPRING_RED 23
+#define COLOR_SPRING_GRY RGB15(22, 22, 22)
+#define COLOR_SPRING_RED RGB15(28, 5, 5)
 
-static void init_palettes(void) {
-    PALETTE_MEM[C_TRANS]      = 0x0000;
-    PALETTE_MEM[C_PAPER]      = RGB15(31, 31, 28);
-    PALETTE_MEM[C_GRID]       = RGB15(25, 27, 29);
-    PALETTE_MEM[C_RED1]       = RGB15(28, 12, 12);
-    PALETTE_MEM[C_RED2]       = RGB15(29, 18, 18);
-    PALETTE_MEM[C_TEXT]       = RGB15(4, 5, 7);
+// ==========================================================================
+// BACKGROUND TEMPLATE
+// ==========================================================================
 
-    // Official Doodler Colors
-    PALETTE_MEM[C_DOOD_LINE]  = RGB15(6, 10, 2);
-    PALETTE_MEM[C_DOOD_BODY]  = RGB15(23, 29, 6);
-    PALETTE_MEM[C_DOOD_EYE]   = RGB15(31, 31, 31);
-    PALETTE_MEM[C_DOOD_PUPIL] = RGB15(0, 0, 0);
-    PALETTE_MEM[C_DOOD_HOLE]  = RGB15(4, 6, 1);
-    PALETTE_MEM[C_DOOD_LEG]   = RGB15(15, 20, 4);
-
-    // Green Platform
-    PALETTE_MEM[C_PLAT_HIGH]  = RGB15(25, 31, 12);
-    PALETTE_MEM[C_PLAT_MAIN]  = RGB15(14, 27, 6);
-    PALETTE_MEM[C_PLAT_SHAD]  = RGB15(7, 18, 3);
-    PALETTE_MEM[C_PLAT_LINE]  = RGB15(2, 9, 2);
-
-    // Blue Platform
-    PALETTE_MEM[C_BLUE_HIGH]  = RGB15(18, 28, 31);
-    PALETTE_MEM[C_BLUE_MAIN]  = RGB15(8, 19, 29);
-    PALETTE_MEM[C_BLUE_SHAD]  = RGB15(4, 11, 20);
-
-    // Wood Platform
-    PALETTE_MEM[C_WOOD_MAIN]  = RGB15(20, 13, 7);
-    PALETTE_MEM[C_WOOD_SHAD]  = RGB15(12, 7, 3);
-    PALETTE_MEM[C_WOOD_CRACK] = RGB15(5, 3, 1);
-
-    // Spring
-    PALETTE_MEM[C_SPRING_GRY] = RGB15(22, 22, 22);
-    PALETTE_MEM[C_SPRING_RED] = RGB15(28, 5, 5);
+static void init_background_template(void) {
+    for (int y = 0; y < SCREEN_H; y++) {
+        int is_hgrid = ((y & 15) == 0);
+        int row = y * SCREEN_W;
+        for (int x = 0; x < SCREEN_W; x++) {
+            if (x == 26) bg_template[row + x] = COLOR_RED1;
+            else if (x == 28) bg_template[row + x] = COLOR_RED2;
+            else if (is_hgrid || ((x & 15) == 0)) bg_template[row + x] = COLOR_GRID;
+            else bg_template[row + x] = COLOR_PAPER;
+        }
+    }
 }
 
 // ==========================================================================
 // ACCURATE 24x22 DOODLER SPRITE (NO HARDWARE CROPPING ISSUES)
 // ==========================================================================
 static const unsigned char doodler_map[22][24] = {
-    {0,0,0,0,0,0,0,0,6,6,6,6,6,6,6,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,6,6,7,7,7,7,7,7,7,6,6,0,0,0,0,0,0,0},
-    {0,0,0,0,0,6,7,7,7,7,7,7,7,7,7,7,7,6,0,0,0,0,0,0},
-    {0,0,0,0,6,7,7,7,7,7,7,7,7,7,7,7,7,7,6,0,0,0,0,0},
-    {0,0,0,0,6,7,7,7,8,8,7,7,8,8,7,7,7,7,6,0,0,0,0,0}, // Eyes
-    {0,0,0,0,6,7,7,8,9,9,8,8,9,9,8,7,7,7,6,0,0,0,0,0}, // Pupils
-    {0,0,0,0,6,7,7,8,9,9,8,8,9,9,8,7,7,7,6,0,0,0,0,0},
-    {0,0,0,0,6,7,7,7,8,8,7,7,8,8,7,7,7,7,6,0,0,0,0,0},
-    {0,0,0,0,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,6,6,6,0,0},
-    {0,0,0,0,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,6,10,10,6,0}, // Snout Hole
-    {0,0,0,0,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,6,10,10,6,0},
-    {0,0,0,0,6,7,7,7,7,7,7,7,7,7,7,7,7,7,7,6,6,6,0,0},
-    {0,0,0,0,6,7,7,7,7,7,7,7,7,7,7,7,7,7,6,0,0,0,0,0},
-    {0,0,0,0,0,6,7,7,7,7,7,7,7,7,7,7,7,6,0,0,0,0,0,0},
-    {0,0,0,0,0,0,6,6,7,7,7,7,7,7,7,6,6,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,6,6,6,6,6,6,6,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,1,1,2,2,2,2,2,2,2,1,1,0,0,0,0,0,0,0},
+    {0,0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0,0},
+    {0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0},
+    {0,0,0,0,1,2,2,2,3,3,2,2,3,3,2,2,2,2,1,0,0,0,0,0}, 
+    {0,0,0,0,1,2,2,3,4,4,3,3,4,4,3,2,2,2,1,0,0,0,0,0}, 
+    {0,0,0,0,1,2,2,3,4,4,3,3,4,4,3,2,2,2,1,0,0,0,0,0},
+    {0,0,0,0,1,2,2,2,3,3,2,2,3,3,2,2,2,2,1,0,0,0,0,0},
+    {0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0,0},
+    {0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,5,5,1,0}, 
+    {0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,5,5,1,0},
+    {0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,0,0},
+    {0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0},
+    {0,0,0,0,0,1,2,2,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0,0},
+    {0,0,0,0,0,0,1,1,2,2,2,2,2,2,2,1,1,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,6,6,0,0,6,6,0,0,6,6,0,0,6,6,0,0,0,0,0,0}, // 4 Legs
-    {0,0,0,6,11,11,6,6,11,11,6,6,11,11,6,6,11,11,6,0,0,0,0,0},
-    {0,0,0,6,11,11,6,6,11,11,6,6,11,11,6,6,11,11,6,0,0,0,0,0},
-    {0,0,0,6,11,11,6,6,11,11,6,6,11,11,6,6,11,11,6,0,0,0,0,0},
-    {0,0,0,0,6,6,0,0,6,6,0,0,6,6,0,0,6,6,0,0,0,0,0,0}
+    {0,0,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,0,0,0,0}, 
+    {0,0,0,1,6,6,1,1,6,6,1,1,6,6,1,1,6,6,1,0,0,0,0,0},
+    {0,0,0,1,6,6,1,1,6,6,1,1,6,6,1,1,6,6,1,0,0,0,0,0},
+    {0,0,0,1,6,6,1,1,6,6,1,1,6,6,1,1,6,6,1,0,0,0,0,0},
+    {0,0,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,0,0,0,0}
 };
 
-static void init_background(void) {
-    for (int y = 0; y < SCREEN_H; y++) {
-        int is_hgrid = ((y & 15) == 0);
-        int row = y * SCREEN_W;
-        for (int x = 0; x < SCREEN_W; x++) {
-            if (x == 26) bg_template[row + x] = C_RED1;
-            else if (x == 28) bg_template[row + x] = C_RED2;
-            else if (is_hgrid || ((x & 15) == 0)) bg_template[row + x] = C_GRID;
-            else bg_template[row + x] = C_PAPER;
-        }
-    }
-}
+static const unsigned short doodler_pal_map[8] = {
+    0, COLOR_DOOD_LINE, COLOR_DOOD_BODY, COLOR_DOOD_EYE, 
+    COLOR_DOOD_PUPIL, COLOR_DOOD_HOLE, COLOR_DOOD_LEG, 0
+};
 
 static void init_sound(void) {
     REG_SOUNDCNT_X = 0x0080;
@@ -194,30 +162,29 @@ static inline void vsync(void) {
 static inline void clear_screen_dma(void) {
     REG_DMA3SAD = (unsigned int)bg_template;
     REG_DMA3DAD = (unsigned int)screen;
-    REG_DMA3CNT = 0x84000000 | (SCREEN_W * SCREEN_H / 4);
+    REG_DMA3CNT = 0x84000000 | (SCREEN_W * SCREEN_H / 2);
 }
 
 static inline void flip_display(void) {
     vsync();
     REG_DMA3SAD = (unsigned int)screen;
     REG_DMA3DAD = 0x06000000;
-    REG_DMA3CNT = 0x84000000 | (SCREEN_W * SCREEN_H / 4);
+    REG_DMA3CNT = 0x84000000 | (SCREEN_W * SCREEN_H / 2);
 }
 
-// Draws the exact shape of a Doodle Jump platform (40x10)
 static void draw_platform(int px, int py, int type, int crumble_timer) {
     int draw_x = px;
     if (type == 2 && crumble_timer > 0) {
-        draw_x += ((crumble_timer & 2) ? 1 : -1); // Shake effect
+        draw_x += ((crumble_timer & 2) ? 1 : -1);
     }
 
-    unsigned char c_high = C_PLAT_HIGH;
-    unsigned char c_main = C_PLAT_MAIN;
-    unsigned char c_shad = C_PLAT_SHAD;
-    unsigned char c_line = C_PLAT_LINE;
+    unsigned short c_high = COLOR_PLAT_HIGH;
+    unsigned short c_main = COLOR_PLAT_MAIN;
+    unsigned short c_shad = COLOR_PLAT_SHAD;
+    unsigned short c_line = COLOR_PLAT_LINE;
 
-    if (type == 1) { c_high = C_BLUE_HIGH; c_main = C_BLUE_MAIN; c_shad = C_BLUE_SHAD; }
-    else if (type == 2) { c_high = C_WOOD_MAIN; c_main = C_WOOD_MAIN; c_shad = C_WOOD_SHAD; c_line = C_WOOD_SHAD; }
+    if (type == 1) { c_high = COLOR_BLUE_HIGH; c_main = COLOR_BLUE_MAIN; c_shad = COLOR_BLUE_SHAD; }
+    else if (type == 2) { c_high = COLOR_WOOD_MAIN; c_main = COLOR_WOOD_MAIN; c_shad = COLOR_WOOD_SHAD; c_line = COLOR_WOOD_SHAD; }
 
     for (int y = 0; y < 10; y++) {
         int sy = py + y;
@@ -230,15 +197,14 @@ static void draw_platform(int px, int py, int type, int crumble_timer) {
 
             if (type == 2) {
                 if (crumble_timer > 0 && (x == 20 + (y % 3) || (crumble_timer < 45 && x == 12 + y))) {
-                    screen[row + sx] = C_WOOD_CRACK; continue;
+                    screen[row + sx] = COLOR_WOOD_CRACK; continue;
                 } else if (crumble_timer < 0 && (x >= 18 && x <= 22)) continue;
             }
 
-            // Rounded pill caps
             if ((y == 0 || y == 9) && (x < 3 || x > 36)) continue;
             if ((y == 1 || y == 8) && (x < 1 || x > 38)) continue;
 
-            unsigned char c;
+            unsigned short c;
             if (y == 0 || y == 9 || x == 0 || x == 39 || ((y == 1 || y == 8) && (x < 3 || x > 36))) c = c_line;
             else if (y == 1 || y == 2) c = c_high;
             else if (y < 7) c = c_main;
@@ -258,14 +224,13 @@ static void draw_spring(int px, int py, int extended) {
         for (int x = 0; x < 12; x++) {
             int sx = px + x;
             if (sx < 0 || sx >= SCREEN_W) continue;
-            if (y <= 1 && x >= 2 && x <= 9) screen[row + sx] = C_SPRING_RED;
-            else if ((x == 0 || x == 11) || ((y & 1) && x > 0 && x < 11)) screen[row + sx] = C_SPRING_GRY;
+            if (y <= 1 && x >= 2 && x <= 9) screen[row + sx] = COLOR_SPRING_RED;
+            else if ((x == 0 || x == 11) || ((y & 1) && x > 0 && x < 11)) screen[row + sx] = COLOR_SPRING_GRY;
         }
     }
 }
 
 static void draw_doodler(int px, int py, int facing, int vy) {
-    // Dynamic Leg Squish
     int leg_offset = (vy < 0) ? -2 : 0; 
 
     for (int y = 0; y < 22; y++) {
@@ -281,7 +246,7 @@ static void draw_doodler(int px, int py, int facing, int vy) {
             unsigned char c = doodler_map[src_y][src_x];
             if (c != 0) {
                 int sx = px + x;
-                if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = c;
+                if (sx >= 0 && sx < SCREEN_W) screen[row + sx] = doodler_pal_map[c];
             }
         }
     }
@@ -312,7 +277,7 @@ static void draw_score(int x, int y, int value, int scale) {
                         int row = py * SCREEN_W;
                         for (int dx = 0; dx < scale; dx++) {
                             int px = x + c * scale + dx;
-                            if (px < SCREEN_W) screen[row + px] = C_TEXT;
+                            if (px < SCREEN_W) screen[row + px] = COLOR_TEXT;
                         }
                     }
                 }
@@ -347,7 +312,7 @@ typedef struct { int x, y, vy, active; } Pellet;
 static Platform platforms[NUM_PLATFORMS];
 static Player player;
 static Pellet pellets[MAX_PELLETS];
-static int score = 0, speed_fp = 157286, game_over = 0;
+static int score = 0, game_over = 0;
 
 static void spawn_platform(int i, int y_pos) {
     platforms[i].y = y_pos;
@@ -375,7 +340,6 @@ static void spawn_platform(int i, int y_pos) {
 
 static void reset_game(void) {
     score = 0;
-    speed_fp = 157286;
     game_over = 0;
 
     player.x = INT_TO_FP(120 - PLAYER_W / 2);
@@ -396,9 +360,8 @@ static void reset_game(void) {
 }
 
 int main(void) {
-    REG_DISPCNT = 0x0404; // Back to Mode 4! Absolute Canvas Drawing
+    REG_DISPCNT = 0x0403; // Mode 3: 240x160 15-bit color Bitmap Mode
     init_sound();
-    init_palettes();
     init_background_template();
     reset_game();
 
@@ -511,7 +474,7 @@ int main(void) {
         }
 
         // ==================================================================
-        // RENDER (Mode 4 Flawless Canvas)
+        // RENDER 
         // ==================================================================
         clear_screen_dma();
 
@@ -527,8 +490,8 @@ int main(void) {
                 int r = pellets[i].y * SCREEN_W;
                 int x = pellets[i].x;
                 if (x > 0 && x < SCREEN_W - 4 && pellets[i].y > 0) {
-                    screen[r + x] = C_DOOD_LINE; screen[r + x + 1] = C_DOOD_LINE;
-                    screen[r + SCREEN_W + x] = C_DOOD_LINE; screen[r + SCREEN_W + x + 1] = C_DOOD_LINE;
+                    screen[r + x] = COLOR_DOOD_LINE; screen[r + x + 1] = COLOR_DOOD_LINE;
+                    screen[r + SCREEN_W + x] = COLOR_DOOD_LINE; screen[r + SCREEN_W + x + 1] = COLOR_DOOD_LINE;
                 }
             }
         }
